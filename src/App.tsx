@@ -1103,23 +1103,88 @@ function Messenger() {
   );
 }
 function FollowUps() {
-  const { isSidebarOpen } = React.useContext(AppContext);
+  const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
+  
+  // Contact Panel state
+  const [selectedFollowUp, setSelectedFollowUp] = useState<any>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [clientInvoices, setClientInvoices] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showTplPicker, setShowTplPicker] = useState(false);
+  const [contactMsg, setContactMsg] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     fetchFollowUps();
+    supabase.from('ng_templates').select('*').then(({ data }) => setTemplates(data || []));
   }, []);
 
   const fetchFollowUps = async () => {
     setLoading(true);
     const { data } = await supabase
       .from('ng_follow_ups')
-      .select('*, ng_clients(name, phone)')
+      .select('*, ng_clients(id, name, phone)')
       .order('scheduled_date', { ascending: true });
     setFollowUps(data || []);
     setLoading(false);
+  };
+
+  const openContactPanel = async (f: any) => {
+    setSelectedFollowUp(f);
+    setPanelOpen(true);
+    setContactMsg('');
+    // Fetch last invoices for this client
+    if (f.client_id) {
+      const { data } = await supabase.from('ng_invoices').select('*').eq('client_id', f.client_id).order('created_at', { ascending: false }).limit(3);
+      setClientInvoices(data || []);
+    }
+  };
+
+  const applyTemplate = (tpl: any) => {
+    const client = selectedFollowUp?.ng_clients;
+    const lastInv = clientInvoices[0];
+    let body = tpl.body;
+    body = body.replace(/\{\{nombre\}\}/gi, client?.name || 'Cliente');
+    body = body.replace(/\{\{productos\}\}/gi, lastInv?.items ? (Array.isArray(lastInv.items) ? lastInv.items.join(', ') : lastInv.items) : 'productos');
+    body = body.replace(/\{\{fecha\}\}/gi, new Date().toLocaleDateString('es-AR'));
+    body = body.replace(/\{\{importe\}\}/gi, lastInv?.amount ? `$${lastInv.amount}` : '$0');
+    setContactMsg(body);
+    setShowTplPicker(false);
+  };
+
+  const handleSendFollowUpMsg = async () => {
+    if (!contactMsg.trim() || !selectedFollowUp?.ng_clients?.phone) return;
+    setSending(true);
+    const phone = selectedFollowUp.ng_clients.phone;
+
+    // Save to DB
+    await supabase.from('ng_whatsapp_messages').insert([{
+      client_phone: phone, body: contactMsg, direction: 'outgoing', message_type: 'text'
+    }]);
+
+    // Send via BuilderBot
+    const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
+    const builderBotKey = import.meta.env.VITE_BUILDERBOT_API_KEY;
+    if (builderBotUrl && builderBotKey) {
+      try {
+        await fetch(`${builderBotUrl}/messages/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${builderBotKey}` },
+          body: JSON.stringify({ number: phone, message: contactMsg })
+        });
+      } catch (err) { console.error(err); }
+    }
+
+    // Mark as completed
+    await supabase.from('ng_follow_ups').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', selectedFollowUp.id);
+    
+    showSystemModal('Mensaje enviado', `Se envió el mensaje a ${selectedFollowUp.ng_clients?.name || phone} y el seguimiento fue marcado como completado.`, 'success');
+    setSending(false);
+    setPanelOpen(false);
+    fetchFollowUps();
   };
 
   const markComplete = async (id: string) => {
@@ -1213,7 +1278,7 @@ function FollowUps() {
                 ) : filtered.length === 0 ? (
                   <tr><td colSpan={7} className="text-center py-12 text-slate-400 text-[14px]">No hay seguimientos {filterStatus !== 'all' ? `con estado "${filterStatus}"` : ''}</td></tr>
                 ) : filtered.map((f: any) => (
-                  <tr key={f.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                  <tr key={f.id} onClick={() => openContactPanel(f)} className="border-b border-slate-50 hover:bg-blue-50/40 transition-colors cursor-pointer">
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         <img src="/images.png" alt="" className="w-8 h-8 rounded-full object-cover mr-3 border border-slate-200" />
@@ -1228,10 +1293,13 @@ function FollowUps() {
                     <td className="px-6 py-4 text-right">
                       {f.status === 'pending' && (
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => markComplete(f.id)} className="bg-green-50 hover:bg-green-100 text-green-600 p-2 rounded-lg transition-colors" title="Marcar completado">
+                          <button onClick={(e) => { e.stopPropagation(); openContactPanel(f); }} className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-2 rounded-lg transition-colors" title="Contactar">
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); markComplete(f.id); }} className="bg-green-50 hover:bg-green-100 text-green-600 p-2 rounded-lg transition-colors" title="Marcar completado">
                             <Check className="w-4 h-4" />
                           </button>
-                          <button onClick={() => markCancelled(f.id)} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-lg transition-colors" title="Cancelar">
+                          <button onClick={(e) => { e.stopPropagation(); markCancelled(f.id); }} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-lg transition-colors" title="Cancelar">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                           </button>
                         </div>
@@ -1245,6 +1313,108 @@ function FollowUps() {
         </div>
 
       </main>
+
+      {/* SLIDE-OVER CONTACT PANEL */}
+      {panelOpen && selectedFollowUp && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPanelOpen(false)}></div>
+          <div className="relative w-full max-w-[520px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+            
+            {/* Panel Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center">
+                <img src="/images.png" alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white/30 mr-4" />
+                <div>
+                  <h3 className="text-white font-bold text-[17px]">{selectedFollowUp.ng_clients?.name || 'Sin nombre'}</h3>
+                  <p className="text-blue-100 text-[13px] font-medium">{selectedFollowUp.ng_clients?.phone || '—'}</p>
+                </div>
+              </div>
+              <button onClick={() => setPanelOpen(false)} className="text-white/70 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            {/* Client Info Cards */}
+            <div className="p-5 space-y-4 border-b border-slate-100 overflow-y-auto flex-shrink-0">
+              {/* Follow-up info */}
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wider mb-2">Seguimiento</p>
+                <div className="grid grid-cols-2 gap-3 text-[13px]">
+                  <div><span className="text-slate-400">Motivo:</span> <span className="font-bold text-slate-700">{selectedFollowUp.reason}</span></div>
+                  <div><span className="text-slate-400">Fecha:</span> <span className="font-bold text-slate-700">{new Date(selectedFollowUp.scheduled_date).toLocaleDateString('es-AR')}</span></div>
+                  <div><span className="text-slate-400">Estado:</span> {statusBadge(selectedFollowUp.status)}</div>
+                  <div>{daysUntil(selectedFollowUp.scheduled_date)}</div>
+                </div>
+              </div>
+
+              {/* Last purchase */}
+              {clientInvoices.length > 0 && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                  <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-2">Última Compra</p>
+                  {clientInvoices.slice(0, 1).map((inv: any, i: number) => (
+                    <div key={i} className="text-[13px] space-y-1">
+                      <div><span className="text-slate-400">Productos:</span> <span className="font-bold text-slate-700">{Array.isArray(inv.items) ? inv.items.join(', ') : inv.items || '—'}</span></div>
+                      <div><span className="text-slate-400">Importe:</span> <span className="font-extrabold text-green-700">${inv.amount || 0}</span></div>
+                      <div><span className="text-slate-400">Fecha:</span> <span className="font-medium text-slate-600">{new Date(inv.created_at).toLocaleDateString('es-AR')}</span></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Message Composer (WhatsApp style) */}
+            <div className="flex-1 flex flex-col p-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[12px] font-bold text-slate-400 uppercase tracking-wider">Enviar Mensaje WhatsApp</p>
+                <div className="relative">
+                  <button onClick={() => setShowTplPicker(!showTplPicker)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" /> Plantillas
+                  </button>
+                  {showTplPicker && (
+                    <div className="absolute right-0 top-10 bg-white rounded-xl shadow-2xl border border-slate-200 w-[300px] max-h-[280px] overflow-y-auto z-50">
+                      <div className="p-3 border-b border-slate-100">
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Seleccioná una plantilla</p>
+                      </div>
+                      {templates.length === 0 ? (
+                        <p className="p-4 text-[13px] text-slate-400 text-center">No hay plantillas creadas</p>
+                      ) : templates.map((tpl: any) => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => applyTemplate(tpl)}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-slate-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] font-bold text-blue-600">{tpl.shortcut}</span>
+                            <span className="text-[10px] text-slate-400 uppercase">{tpl.category}</span>
+                          </div>
+                          <p className="text-[12px] text-slate-500 mt-1 line-clamp-2">{tpl.body.substring(0, 80)}...</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <textarea 
+                value={contactMsg} 
+                onChange={e => setContactMsg(e.target.value)}
+                placeholder="Escribí tu mensaje para el cliente..."
+                className="flex-1 w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 resize-none focus:outline-none focus:border-blue-400 bg-slate-50 min-h-[160px]"
+              />
+              <p className="text-[11px] text-slate-400 mt-2 mb-4">{contactMsg.length} caracteres</p>
+
+              <button 
+                onClick={handleSendFollowUpMsg} 
+                disabled={sending || !contactMsg.trim()}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-xl transition-colors shadow-md flex items-center justify-center gap-2 text-[15px] disabled:opacity-50"
+              >
+                <MessageSquare className="w-5 h-5" />
+                {sending ? 'Enviando...' : 'Enviar por WhatsApp'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
