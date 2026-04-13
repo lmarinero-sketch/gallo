@@ -67,83 +67,27 @@ CREATE TABLE IF NOT EXISTS public.ng_templates (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Configurar RLS (Row Level Security) básico
-ALTER TABLE public.ng_clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ng_invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ng_follow_ups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ng_templates ENABLE ROW LEVEL SECURITY;
+-- ═══════════════════════════════════════════════
+-- SEGURIDAD: RLS DESACTIVADO (Panel admin privado)
+-- ═══════════════════════════════════════════════
+-- NOTA: RLS está desactivado porque este es un panel de administración
+-- interno. Si en el futuro se agregan roles de cliente, activar RLS
+-- y crear políticas por rol.
+ALTER TABLE public.ng_clients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_invoices DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_follow_ups DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_templates DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_whatsapp_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_error_logs DISABLE ROW LEVEL SECURITY;
 
--- Políticas para Clientes
-DROP POLICY IF EXISTS "Ver clientes" ON public.ng_clients;
-DROP POLICY IF EXISTS "Insertar clientes" ON public.ng_clients;
-DROP POLICY IF EXISTS "Actualizar clientes" ON public.ng_clients;
-CREATE POLICY "Ver clientes" ON public.ng_clients FOR SELECT USING (true);
-CREATE POLICY "Insertar clientes" ON public.ng_clients FOR INSERT WITH CHECK (true);
-CREATE POLICY "Actualizar clientes" ON public.ng_clients FOR UPDATE USING (true);
+-- GRANT: Permisos completos para roles anon/authenticated/service_role
+GRANT ALL ON public.ng_clients TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_invoices TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_follow_ups TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_whatsapp_messages TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_templates TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_error_logs TO anon, authenticated, service_role;
 
--- Limpiar Políticas Existentes para evitar ERROR: 42710
-DROP POLICY IF EXISTS "Ver facturas" ON public.ng_invoices;
-DROP POLICY IF EXISTS "Insertar facturas" ON public.ng_invoices;
-DROP POLICY IF EXISTS "Ver seguimientos" ON public.ng_follow_ups;
-DROP POLICY IF EXISTS "Insertar seguimientos" ON public.ng_follow_ups;
-
--- Políticas para Invoices
-CREATE POLICY "Ver facturas" ON public.ng_invoices FOR SELECT USING (true);
-CREATE POLICY "Insertar facturas" ON public.ng_invoices FOR INSERT WITH CHECK (auth.uid() IS NOT NULL OR true);
-
--- Políticas para Seguimientos
-CREATE POLICY "Ver seguimientos" ON public.ng_follow_ups FOR SELECT USING (true);
-CREATE POLICY "Insertar seguimientos" ON public.ng_follow_ups FOR INSERT WITH CHECK (auth.uid() IS NOT NULL OR true);
-
--- Tabla de log de errores (Reportar Problema)
-CREATE TABLE IF NOT EXISTS public.ng_error_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title TEXT,
-    message TEXT,
-    type TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-ALTER TABLE public.ng_error_logs ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Insertar error logs" ON public.ng_error_logs;
-DROP POLICY IF EXISTS "Ver error logs" ON public.ng_error_logs;
-CREATE POLICY "Insertar error logs" ON public.ng_error_logs FOR INSERT WITH CHECK (true);
-CREATE POLICY "Ver error logs" ON public.ng_error_logs FOR SELECT USING (true);
-
--- Agregar columna de observaciones a seguimientos
+-- Columnas adicionales
 ALTER TABLE public.ng_follow_ups ADD COLUMN IF NOT EXISTS observations TEXT;
-
--- Agregar columna de resumen IA a clientes
 ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS ai_summary TEXT;
-
--- Política de actualización para seguimientos
-DROP POLICY IF EXISTS "Actualizar seguimientos" ON public.ng_follow_ups;
-CREATE POLICY "Actualizar seguimientos" ON public.ng_follow_ups FOR UPDATE USING (true) WITH CHECK (true);
-
--- Política de actualización para clientes
-DROP POLICY IF EXISTS "Actualizar clientes" ON public.ng_clients;
-CREATE POLICY "Actualizar clientes" ON public.ng_clients FOR UPDATE USING (true) WITH CHECK (true);
-
--- Política de eliminación para clientes
-DROP POLICY IF EXISTS "Eliminar clientes" ON public.ng_clients;
-CREATE POLICY "Eliminar clientes" ON public.ng_clients FOR DELETE USING (true);
-
--- Política de actualización para facturas
-DROP POLICY IF EXISTS "Actualizar facturas" ON public.ng_invoices;
-CREATE POLICY "Actualizar facturas" ON public.ng_invoices FOR UPDATE USING (true);
-
--- ═══════════════════════════════════════════════
--- GRANT: Permisos para roles anon y authenticated
--- ═══════════════════════════════════════════════
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_clients TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_clients TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_invoices TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_invoices TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_follow_ups TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_follow_ups TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_whatsapp_messages TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_whatsapp_messages TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_templates TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_templates TO authenticated;
-GRANT SELECT, INSERT ON public.ng_error_logs TO anon;
-GRANT SELECT, INSERT ON public.ng_error_logs TO authenticated;
-

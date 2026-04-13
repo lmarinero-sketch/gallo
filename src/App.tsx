@@ -60,12 +60,12 @@ function Sidebar() {
         title={!isSidebarOpen ? text : undefined}
         className={`flex items-center ${isSidebarOpen ? 'justify-between px-4' : 'justify-center px-0'} py-3 text-[14px] font-medium rounded-xl transition-all ${
           isActive 
-            ? 'bg-blue-50 text-blue-600' 
-            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+            ? 'bg-white/15 text-white backdrop-blur-sm' 
+            : 'text-blue-100/70 hover:bg-white/10 hover:text-white'
         }`}
       >
         <div className="flex items-center">
-          <Icon className={`w-[18px] h-[18px] ${isSidebarOpen ? 'mr-3' : ''} ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+          <Icon className={`w-[18px] h-[18px] ${isSidebarOpen ? 'mr-3' : ''} ${isActive ? 'text-white' : 'text-blue-200/60'}`} />
           {isSidebarOpen && text}
         </div>
         {badge && isSidebarOpen && (
@@ -78,19 +78,25 @@ function Sidebar() {
   };
 
   return (
-    <div className={`bg-white border-r border-slate-200 h-screen flex flex-col fixed left-0 top-0 overflow-visible transition-[width] duration-300 z-50 ${isSidebarOpen ? 'w-[280px]' : 'w-[80px]'}`}>
-      <div className={`p-4 border-b border-slate-100 flex items-center h-[88px] relative ${isSidebarOpen ? 'justify-between px-6' : 'justify-center px-2'}`}>
+    <div className={`h-screen flex flex-col fixed left-0 top-0 overflow-visible transition-[width] duration-300 z-50 ${isSidebarOpen ? 'w-[280px]' : 'w-[80px]'}`}
+      style={{
+        backgroundImage: 'linear-gradient(to bottom, rgba(1,66,142,0.92) 0%, rgba(1,40,100,0.97) 100%), url(/2021-06-07.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+    >
+      <div className={`p-4 border-b border-white/10 flex items-center h-[88px] relative ${isSidebarOpen ? 'justify-between px-6' : 'justify-center px-2'}`}>
         <div className="flex items-center overflow-hidden">
-            <img src="/images.png" alt="Neumáticos Gallo" className="w-[42px] h-[42px] rounded-xl object-cover shadow-[0_2px_8px_-3px_rgba(0,0,0,0.2)] shrink-0" />
+            <img src="/images.png" alt="Neumáticos Gallo" className="w-[42px] h-[42px] rounded-xl object-cover shadow-lg shrink-0 border-2 border-white/20" />
             {isSidebarOpen && (
               <div className="ml-3 shrink-0">
-                <h2 className="text-[17px] font-extrabold text-[#01428E] leading-tight">Neumáticos</h2>
-                <p className="text-[14px] text-slate-500 leading-tight font-medium tracking-wide">Gallo</p>
+                <h2 className="text-[17px] font-extrabold text-white leading-tight">Neumáticos</h2>
+                <p className="text-[14px] text-blue-200 leading-tight font-medium tracking-wide">Gallo</p>
               </div>
             )}
         </div>
         
-        {/* Toggle Button SaaS floating edge style */}
+        {/* Toggle Button */}
         <button 
            onClick={toggleSidebar} 
            className="absolute -right-[14px] top-[30px] bg-white border border-slate-200 text-slate-400 hover:text-blue-600 shadow-sm rounded-md p-1 z-50 transition-colors"
@@ -110,8 +116,8 @@ function Sidebar() {
       </nav>
       
       {isSidebarOpen && (
-        <div className="p-4 border-t border-slate-100 text-center">
-          <a href="https://www.growlabs.lat" target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-400 font-medium uppercase tracking-wider hover:text-blue-600 transition-colors block">
+        <div className="p-4 border-t border-white/10 text-center">
+          <a href="https://www.growlabs.lat" target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-200/60 font-medium uppercase tracking-wider hover:text-white transition-colors block">
             SISTEMA CREADO POR GROW LABS
           </a>
         </div>
@@ -2234,9 +2240,23 @@ function SystemModal({
           <p className="text-slate-600 text-[14px] leading-relaxed whitespace-pre-wrap">{message}</p>
         </div>
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <button onClick={() => {
-            // Log issue
+          <button onClick={async () => {
+            // Log issue to DB
             supabase.from('ng_error_logs').insert([{ title, message, type }]).then();
+            
+            // Send WhatsApp to admin via BuilderBot
+            const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
+            const builderBotKey = import.meta.env.VITE_BUILDERBOT_API_KEY;
+            if (builderBotUrl && builderBotKey) {
+              try {
+                const alertMsg = `⚠️ *REPORTE DE PROBLEMA*\n\n📋 *Título:* ${title}\n💬 *Detalle:* ${message}\n🏷️ *Tipo:* ${type}\n📅 *Fecha:* ${new Date().toLocaleString('es-AR')}`;
+                await fetch(`${builderBotUrl}/messages/send`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${builderBotKey}` },
+                  body: JSON.stringify({ number: '5492645438114', message: alertMsg })
+                });
+              } catch (err) { console.error('Error sending alert to admin:', err); }
+            }
             onClose();
           }} className="text-[11px] font-medium text-slate-400 hover:text-blue-600 underline">
             Reportar problema
