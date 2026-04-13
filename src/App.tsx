@@ -265,9 +265,9 @@ function Dashboard() {
   )
 }
 
-// Normaliza teléfono argentino al formato 549XXXXXXXXXX (sin 15)
+// Normaliza teléfono argentino al formato 549XXXXXXXXXX (sin 15, sin +)
 function normalizePhone(raw: string): string {
-  let p = raw.replace(/[^\d]/g, ''); // solo dígitos
+  let p = raw.replace(/[^\d]/g, ''); // solo dígitos, esto ya remueve el +
   // Si empieza con 0, quitamos el 0
   if (p.startsWith('0')) p = p.substring(1);
   // Si empieza con 15, quitamos el 15
@@ -279,6 +279,13 @@ function normalizePhone(raw: string): string {
   return p;
 }
 
+// Formatea un importe numérico a formato argentino
+function formatMoney(amount: number | string): string {
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return '$0,00';
+  return '$' + num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function UploadInvoice() {
   const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
   const [file, setFile] = useState<File | null>(null);
@@ -286,6 +293,7 @@ function UploadInvoice() {
   const [parsedData, setParsedData] = useState<any>(null);
   const [reason, setReason] = useState('Rotación de neumáticos');
   const [days, setDays] = useState(180);
+  const [observations, setObservations] = useState('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -311,16 +319,12 @@ function UploadInvoice() {
       });
       
       if (error) throw error;
+      // Normalize phone client side too
+      if (data.phone) data.phone = normalizePhone(data.phone);
       setParsedData(data);
     } catch (err: any) {
       console.error(err);
       showSystemModal('Error', 'Error procesando factura (¿La Edge Function está corriendo?) | Error: ' + err.message, 'error');
-      setParsedData({
-        clientName: 'Cliente Ejemplo Local',
-        phone: '+549110000',
-        amount: 5000,
-        items: ['Neumáticos P7']
-      });
     } finally {
       setLoading(false);
     }
@@ -340,11 +344,13 @@ function UploadInvoice() {
 
       if (cErr) throw cErr; 
 
-      // Guardar también la factura extraída!
+      // Save invoice with structured items
+      const itemsToSave = Array.isArray(parsedData.items) ? parsedData.items : [];
       const { error: invErr } = await supabase.from('ng_invoices').insert({
         client_id: client?.id,
+        invoice_number: parsedData.invoiceNumber || null,
         amount: parsedData.amount || 0,
-        items: Array.isArray(parsedData.items) ? parsedData.items : parsedData.items.split(','),
+        items: itemsToSave,
         purchase_date: parsedData.date || new Date().toISOString().split('T')[0]
       });
       if (invErr) throw invErr;
@@ -355,13 +361,15 @@ function UploadInvoice() {
       const { error: fErr } = await supabase.from('ng_follow_ups').insert({
         client_id: client?.id, 
         reason: reason,
-        scheduled_date: scheduledDate.toISOString().split('T')[0]
+        scheduled_date: scheduledDate.toISOString().split('T')[0],
+        observations: observations || null
       });
 
       if (fErr) throw fErr;
       showSystemModal('¡Exito!', '¡Factura y Seguimiento Guardados Exitosamente!', 'success');
       setParsedData(null);
       setFile(null);
+      setObservations('');
     } catch(e: any) {
       console.error(e);
       showSystemModal('Error Base de Datos', 'Error al guardar el seguimiento. Asegúrate de ejecutar el sql schema. Detalles: ' + e?.message, 'error');
@@ -372,6 +380,7 @@ function UploadInvoice() {
 
   const [uploadTab, setUploadTab] = useState<'pdf' | 'manual' | 'excel'>('pdf');
   const [manualData, setManualData] = useState({ clientName: '', phone: '', amount: '', items: '' });
+  const [manualObservations, setManualObservations] = useState('');
 
   const handleManualSave = async () => {
     setSaving(true);
@@ -380,14 +389,18 @@ function UploadInvoice() {
       const { data: client } = await supabase.from('ng_clients').upsert({ phone: normalizedPhone, name: manualData.clientName }, { onConflict: 'phone' }).select().single();
       await supabase.from('ng_invoices').insert({ client_id: client?.id, amount: parseFloat(manualData.amount) || 0, items: manualData.items.split(',').map(i => i.trim()) });
       const scheduledDate = new Date(); scheduledDate.setDate(scheduledDate.getDate() + days);
-      await supabase.from('ng_follow_ups').insert({ client_id: client?.id, reason, scheduled_date: scheduledDate.toISOString().split('T')[0] });
+      await supabase.from('ng_follow_ups').insert({ client_id: client?.id, reason, scheduled_date: scheduledDate.toISOString().split('T')[0], observations: manualObservations || null });
       showSystemModal('¡Éxito!', '¡Venta manual guardada exitosamente!', 'success');
       setManualData({ clientName: '', phone: '', amount: '', items: '' });
+      setManualObservations('');
     } catch(e: any) {
       showSystemModal('Error', 'Error al guardar venta manual: ' + e?.message, 'error');
     }
     setSaving(false);
   };
+
+  // Helper: check if items are in new structured format (array of objects)
+  const hasStructuredItems = parsedData?.items && Array.isArray(parsedData.items) && parsedData.items.length > 0 && typeof parsedData.items[0] === 'object';
 
   return (
     <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} min-h-screen bg-[#F8FAFC] flex flex-col`}>
@@ -435,64 +448,209 @@ function UploadInvoice() {
               </div>
             </div>
 
+            {/* ═══════════════════════════════════════════════════════════
+                RESULTADO DEL ANÁLISIS — ESTILO FACTURA
+               ═══════════════════════════════════════════════════════════ */}
             {parsedData && (
-              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-                <div className="bg-green-50 px-6 py-4 border-b border-green-100 flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-full mr-3 animate-pulse"></div>
-                  <p className="text-[13px] font-bold text-green-800">Análisis exitoso (Datos autocompletados)</p>
-                </div>
+              <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6">
                 
-                <div className="p-8 grid grid-cols-3 gap-x-8 gap-y-6">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cliente</label>
-                    <input type="text" readOnly value={parsedData.clientName || ''} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-800 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Teléfono</label>
-                    <input type="text" readOnly value={parsedData.phone || ''} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-800 focus:outline-none" />
-                    <p className="text-[10px] text-blue-500 mt-1 font-medium">Formato requerido: 549XXXXXXXXXX (sin 15). Se normaliza automáticamente.</p>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Importe Total</label>
-                    <input type="text" readOnly value={`$${parsedData.amount || 0}`} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-bold text-slate-800 focus:outline-none" />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Productos Extraídos</label>
-                    <textarea readOnly value={Array.isArray(parsedData.items) ? parsedData.items.join(', ') : parsedData.items} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-800 h-20 resize-none focus:outline-none" />
-                  </div>
+                {/* SUCCESS BANNER */}
+                <div className="bg-green-50 border border-green-200 rounded-2xl px-6 py-4 flex items-center">
+                  <div className="w-2.5 h-2.5 bg-green-500 rounded-full mr-3 animate-pulse"></div>
+                  <p className="text-[13px] font-bold text-green-800">Análisis exitoso — Datos extraídos con IA</p>
+                  <span className="ml-auto text-[11px] text-green-600 font-medium bg-green-100 px-3 py-1 rounded-full">Factura {parsedData.invoiceType || 'A'}</span>
                 </div>
-                
-                <div className="bg-slate-50 p-8 border-t border-slate-100">
-                  <div className="grid grid-cols-2 gap-8 mb-6">
-                    <div>
-                      <label className="block text-[13px] font-bold text-slate-700 mb-2">Motivo de contacto</label>
-                      <select value={reason} onChange={e => setReason(e.target.value)} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 focus:outline-none focus:border-blue-500 bg-white shadow-sm">
-                        <option>Rotación de neumáticos</option>
-                        <option>Alineación y Balanceo</option>
-                        <option>Satisfacción de compra</option>
-                        <option>Cambio de Aceite</option>
-                      </select>
+
+                {/* ──── FACTURA VISUAL CARD ──── */}
+                <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.08)] overflow-hidden">
+                  
+                  {/* HEADER FACTURA */}
+                  <div className="bg-gradient-to-r from-[#01428E] to-[#1E3A8A] p-6 flex items-start justify-between">
+                    <div className="flex items-center">
+                      <img src="/images.png" alt="Gallo" className="w-12 h-12 rounded-xl object-cover border-2 border-white/20 mr-4" />
+                      <div>
+                        <h3 className="text-white text-[18px] font-extrabold tracking-tight">Gallo neumáticos</h3>
+                        <p className="text-blue-200 text-[12px] font-medium">Neumáticos Gallo S.R.L.</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[13px] font-bold text-slate-700 mb-2">Agendar a X días</label>
-                      <div className="flex rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-white">
-                        <button onClick={() => setDays(30)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 30 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>30</button>
-                        <div className="w-[1px] bg-slate-100"></div>
-                        <button onClick={() => setDays(90)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 90 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>90</button>
-                        <div className="w-[1px] bg-slate-100"></div>
-                        <button onClick={() => setDays(180)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 180 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>180</button>
+                    <div className="text-right">
+                      <div className="flex items-center justify-end gap-3 mb-1">
+                        <span className="bg-white text-[#01428E] text-[14px] font-black px-3 py-1 rounded-lg">{parsedData.invoiceType || 'A'}</span>
+                        <span className="text-white text-[16px] font-bold">Factura</span>
+                      </div>
+                      {parsedData.invoiceNumber && (
+                        <p className="text-blue-200 text-[13px] font-bold tracking-wider">Nº {parsedData.invoiceNumber}</p>
+                      )}
+                      {parsedData.date && (
+                        <p className="text-blue-300 text-[12px] mt-1">Fecha: {new Date(parsedData.date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DATOS CLIENTE */}
+                  <div className="grid grid-cols-2 gap-6 p-6 border-b border-slate-100">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Señor/es</p>
+                        <p className="text-[16px] font-extrabold text-slate-800">{parsedData.clientName || '—'}</p>
+                      </div>
+                      {parsedData.cuit && (
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">C.U.I.T.</p>
+                          <p className="text-[14px] font-mono font-bold text-slate-700">{parsedData.cuit}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Teléfono</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[14px] font-mono font-bold text-slate-700">{parsedData.phone || 'No especificado'}</p>
+                          {parsedData.phone && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold">549 OK</span>}
+                        </div>
+                      </div>
+                      {parsedData.paymentCondition && (
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cond. Venta</p>
+                          <p className="text-[14px] font-bold text-slate-700">{parsedData.paymentCondition}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ──── TABLA DE PRODUCTOS ──── */}
+                  <div className="p-6">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center">
+                      <Package className="w-3.5 h-3.5 mr-2" />
+                      Detalle de Productos / Servicios
+                    </p>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-slate-50">
+                            <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[80px]">CÓD.</th>
+                            <th className="text-center px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[60px]">CANT.</th>
+                            <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">DESCRIPCIÓN</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[120px]">P. UNIT.</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[120px]">IMPORTE</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {hasStructuredItems ? (
+                            parsedData.items.map((item: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                <td className="px-4 py-3 text-[12px] font-mono text-slate-500">{item.cod || '—'}</td>
+                                <td className="px-4 py-3 text-[13px] font-bold text-slate-800 text-center">{item.qty || 1}</td>
+                                <td className="px-4 py-3 text-[13px] font-medium text-slate-800">{item.description}</td>
+                                <td className="px-4 py-3 text-[13px] font-mono text-slate-600 text-right">{item.unitPrice ? formatMoney(item.unitPrice) : '—'}</td>
+                                <td className="px-4 py-3 text-[13px] font-mono font-bold text-slate-800 text-right">{item.total ? formatMoney(item.total) : '—'}</td>
+                              </tr>
+                            ))
+                          ) : Array.isArray(parsedData.items) ? (
+                            parsedData.items.map((item: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                <td className="px-4 py-3 text-[12px] font-mono text-slate-500">—</td>
+                                <td className="px-4 py-3 text-[13px] font-bold text-slate-800 text-center">1</td>
+                                <td className="px-4 py-3 text-[13px] font-medium text-slate-800">{typeof item === 'string' ? item : item.description || JSON.stringify(item)}</td>
+                                <td className="px-4 py-3 text-[13px] font-mono text-slate-600 text-right">—</td>
+                                <td className="px-4 py-3 text-[13px] font-mono font-bold text-slate-800 text-right">—</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-4 text-[13px] text-slate-500 text-center">Sin productos extraídos</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ──── TOTALES ESTILO FACTURA ──── */}
+                  <div className="px-6 pb-6">
+                    <div className="flex justify-end">
+                      <div className="w-[380px] space-y-2">
+                        {parsedData.subtotal && (
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-slate-500">Subtotal</span>
+                            <span className="font-mono font-medium text-slate-700">{formatMoney(parsedData.subtotal)}</span>
+                          </div>
+                        )}
+                        {parsedData.discount && (
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-slate-500">Descuento ({parsedData.discount}%)</span>
+                            <span className="font-mono font-medium text-red-500">-{parsedData.discountAmount ? formatMoney(parsedData.discountAmount) : '—'}</span>
+                          </div>
+                        )}
+                        {parsedData.iva && (
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-slate-500">IVA 21%</span>
+                            <span className="font-mono font-medium text-slate-700">{formatMoney(parsedData.iva)}</span>
+                          </div>
+                        )}
+                        <div className="border-t-2 border-slate-800 pt-3 mt-2 flex justify-between">
+                          <span className="text-[15px] font-extrabold text-slate-800">TOTAL</span>
+                          <span className="text-[18px] font-extrabold text-slate-900 font-mono">{formatMoney(parsedData.amount || 0)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
-                  <button 
-                    onClick={saveFollowUp} 
-                    disabled={saving} 
-                    className="w-full bg-[#EAB308] hover:bg-yellow-400 text-yellow-950 font-bold px-6 py-4 rounded-xl shadow-sm transition-all text-[15px]"
-                   >
-                    {saving ? 'Guardando en Base de Datos...' : 'Guardar Seguimiento Automático'}
-                  </button>
                 </div>
+
+                {/* ──── CONFIGURACIÓN DE SEGUIMIENTO ──── */}
+                <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+                  <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center">
+                    <Clock className="w-4 h-4 text-amber-500 mr-3" />
+                    <p className="text-[13px] font-bold text-slate-700">Configurar Seguimiento</p>
+                  </div>
+                  <div className="p-6 space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-[13px] font-bold text-slate-700 mb-2">Motivo de contacto</label>
+                        <select value={reason} onChange={e => setReason(e.target.value)} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 focus:outline-none focus:border-blue-500 bg-white shadow-sm">
+                          <option>Rotación de neumáticos</option>
+                          <option>Alineación y Balanceo</option>
+                          <option>Satisfacción de compra</option>
+                          <option>Cambio de Aceite</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[13px] font-bold text-slate-700 mb-2">Agendar a X días</label>
+                        <div className="flex rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-white">
+                          <button onClick={() => setDays(30)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 30 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>30</button>
+                          <div className="w-[1px] bg-slate-100"></div>
+                          <button onClick={() => setDays(90)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 90 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>90</button>
+                          <div className="w-[1px] bg-slate-100"></div>
+                          <button onClick={() => setDays(180)} className={`flex-1 py-3 text-[14px] font-medium transition-colors ${days === 180 ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-600'}`}>180</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* OBSERVACIONES */}
+                    <div>
+                      <label className="block text-[13px] font-bold text-slate-700 mb-2 flex items-center">
+                        <Edit2 className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                        Observaciones
+                        <span className="ml-2 text-[10px] font-medium text-slate-400">(opcional — se verán en el seguimiento)</span>
+                      </label>
+                      <textarea 
+                        value={observations} 
+                        onChange={e => setObservations(e.target.value)} 
+                        placeholder="Ej: Cliente pidió que lo contactemos por la mañana. Interesado en alineación 3D..." 
+                        className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-700 h-24 resize-none focus:outline-none focus:border-blue-500 bg-white shadow-sm" 
+                      />
+                    </div>
+                    
+                    <button 
+                      onClick={saveFollowUp} 
+                      disabled={saving} 
+                      className="w-full bg-[#EAB308] hover:bg-yellow-400 text-yellow-950 font-bold px-6 py-4 rounded-xl shadow-sm transition-all text-[15px] disabled:opacity-50"
+                    >
+                      {saving ? 'Guardando en Base de Datos...' : 'Guardar Factura + Seguimiento Automático'}
+                    </button>
+                  </div>
+                </div>
+
               </div>
             )}
           </>
@@ -532,6 +690,10 @@ function UploadInvoice() {
               <div className="col-span-2">
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Productos (separados por coma)</label>
                 <textarea value={manualData.items} onChange={e => setManualData({...manualData, items: e.target.value})} placeholder="Ej: Bridgestone 205/55R16, Alineación, Balanceo" className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 h-24 resize-none focus:outline-none focus:border-blue-500 bg-white" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Observaciones (opcional)</label>
+                <textarea value={manualObservations} onChange={e => setManualObservations(e.target.value)} placeholder="Ej: Llamar por la mañana, interesado en alineación..." className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 h-20 resize-none focus:outline-none focus:border-blue-500 bg-white" />
               </div>
               <div className="col-span-2">
                 <label className="block text-[13px] font-bold text-slate-700 mb-2">Agendar seguimiento a X días</label>
@@ -1285,6 +1447,7 @@ function FollowUps() {
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cliente</th>
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Teléfono</th>
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Motivo</th>
+                  <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Observaciones</th>
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Fecha Programada</th>
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tiempo</th>
                   <th className="text-left px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Estado</th>
@@ -1293,9 +1456,9 @@ function FollowUps() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-slate-400 text-[14px]">Cargando seguimientos...</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-[14px]">Cargando seguimientos...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-slate-400 text-[14px]">No hay seguimientos {filterStatus !== 'all' ? `con estado "${filterStatus}"` : ''}</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400 text-[14px]">No hay seguimientos {filterStatus !== 'all' ? `con estado "${filterStatus}"` : ''}</td></tr>
                 ) : filtered.map((f: any) => (
                   <tr key={f.id} onClick={() => openContactPanel(f)} className="border-b border-slate-50 hover:bg-blue-50/40 transition-colors cursor-pointer">
                     <td className="px-6 py-4">
@@ -1306,6 +1469,7 @@ function FollowUps() {
                     </td>
                     <td className="px-6 py-4 text-[13px] text-slate-600 font-medium">{f.ng_clients?.phone || '—'}</td>
                     <td className="px-6 py-4 text-[13px] text-slate-600 font-medium">{f.reason}</td>
+                    <td className="px-6 py-4 text-[12px] text-slate-500 max-w-[180px] truncate" title={f.observations || ''}>{f.observations || <span className="text-slate-300">—</span>}</td>
                     <td className="px-6 py-4 text-[13px] text-slate-700 font-bold">{new Date(f.scheduled_date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                     <td className="px-6 py-4">{daysUntil(f.scheduled_date)}</td>
                     <td className="px-6 py-4">{statusBadge(f.status)}</td>
@@ -1364,6 +1528,12 @@ function FollowUps() {
                   <div><span className="text-slate-400">Estado:</span> {statusBadge(selectedFollowUp.status)}</div>
                   <div>{daysUntil(selectedFollowUp.scheduled_date)}</div>
                 </div>
+                {selectedFollowUp.observations && (
+                  <div className="mt-3 pt-3 border-t border-amber-200">
+                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Observaciones</p>
+                    <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{selectedFollowUp.observations}</p>
+                  </div>
+                )}
               </div>
 
               {/* Last purchase */}

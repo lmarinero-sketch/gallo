@@ -107,3 +107,11 @@ DROP POLICY IF EXISTS "Insertar error logs" ON public.ng_error_logs;
 DROP POLICY IF EXISTS "Ver error logs" ON public.ng_error_logs;
 CREATE POLICY "Insertar error logs" ON public.ng_error_logs FOR INSERT WITH CHECK (true);
 CREATE POLICY "Ver error logs" ON public.ng_error_logs FOR SELECT USING (true);
+
+-- Agregar columna de observaciones a seguimientos
+ALTER TABLE public.ng_follow_ups ADD COLUMN IF NOT EXISTS observations TEXT;
+
+-- Política de actualización para seguimientos
+DROP POLICY IF EXISTS "Actualizar seguimientos" ON public.ng_follow_ups;
+CREATE POLICY "Actualizar seguimientos" ON public.ng_follow_ups FOR UPDATE USING (true);
+
