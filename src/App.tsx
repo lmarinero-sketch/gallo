@@ -265,6 +265,20 @@ function Dashboard() {
   )
 }
 
+// Normaliza teléfono argentino al formato 549XXXXXXXXXX (sin 15)
+function normalizePhone(raw: string): string {
+  let p = raw.replace(/[^\d]/g, ''); // solo dígitos
+  // Si empieza con 0, quitamos el 0
+  if (p.startsWith('0')) p = p.substring(1);
+  // Si empieza con 15, quitamos el 15
+  if (p.startsWith('15')) p = p.substring(2);
+  // Si empieza con 54 pero no 549, insertamos 9
+  if (p.startsWith('54') && !p.startsWith('549')) p = '549' + p.substring(2);
+  // Si NO empieza con 549, lo agregamos
+  if (!p.startsWith('549')) p = '549' + p;
+  return p;
+}
+
 function UploadInvoice() {
   const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
   const [file, setFile] = useState<File | null>(null);
@@ -318,9 +332,10 @@ function UploadInvoice() {
     if (!parsedData) return;
     setSaving(true);
     try {
+      const normalizedPhone = normalizePhone(parsedData.phone || '0000000');
       const { data: client, error: cErr } = await supabase.from('ng_clients').upsert({
         name: parsedData.clientName,
-        phone: parsedData.phone || '0000000'
+        phone: normalizedPhone
       }, { onConflict: 'phone' }).select().single();
 
       if (cErr) throw cErr; 
@@ -361,7 +376,8 @@ function UploadInvoice() {
   const handleManualSave = async () => {
     setSaving(true);
     try {
-      const { data: client } = await supabase.from('ng_clients').upsert({ phone: manualData.phone, name: manualData.clientName }, { onConflict: 'phone' }).select().single();
+      const normalizedPhone = normalizePhone(manualData.phone);
+      const { data: client } = await supabase.from('ng_clients').upsert({ phone: normalizedPhone, name: manualData.clientName }, { onConflict: 'phone' }).select().single();
       await supabase.from('ng_invoices').insert({ client_id: client?.id, amount: parseFloat(manualData.amount) || 0, items: manualData.items.split(',').map(i => i.trim()) });
       const scheduledDate = new Date(); scheduledDate.setDate(scheduledDate.getDate() + days);
       await supabase.from('ng_follow_ups').insert({ client_id: client?.id, reason, scheduled_date: scheduledDate.toISOString().split('T')[0] });
@@ -434,6 +450,7 @@ function UploadInvoice() {
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Teléfono</label>
                     <input type="text" readOnly value={parsedData.phone || ''} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-medium text-slate-800 focus:outline-none" />
+                    <p className="text-[10px] text-blue-500 mt-1 font-medium">Formato requerido: 549XXXXXXXXXX (sin 15). Se normaliza automáticamente.</p>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Importe Total</label>
@@ -495,7 +512,9 @@ function UploadInvoice() {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Teléfono</label>
-                <input type="text" value={manualData.phone} onChange={e => setManualData({...manualData, phone: e.target.value})} placeholder="Ej: 5491112345678" className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 focus:outline-none focus:border-blue-500 bg-white" />
+                <input type="text" value={manualData.phone} onChange={e => setManualData({...manualData, phone: e.target.value})} placeholder="Ej: 5492645438114" className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-800 focus:outline-none focus:border-blue-500 bg-white" />
+                <p className="text-[10px] text-blue-500 mt-1 font-medium">Formato: 549 + código de área + número (sin 15). Ej: 549264<b>5438114</b></p>
+                {manualData.phone && <p className="text-[10px] text-green-600 mt-0.5 font-bold">Se guardará como: {normalizePhone(manualData.phone)}</p>}
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Importe Total ($)</label>
