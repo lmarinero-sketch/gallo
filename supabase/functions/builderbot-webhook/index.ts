@@ -53,11 +53,11 @@ serve(async (req) => {
 
     const pushName = payload.name || data.name || data.pushName || '';
     if (pushName) {
-      console.log(`Intentando registrar cliente nuevo: ${pushName} (${phone})`);
-      await supabase.from('ng_clients').insert({
+      console.log(`Registrando/actualizando cliente: ${pushName} (${phone})`);
+      await supabase.from('ng_clients').upsert({
         name: pushName,
         phone: phone
-      }).select(); // Fallará silenciosamente si el teléfono ya existe (UNIQUE), que es lo que queremos.
+      }, { onConflict: 'phone' }).select();
     }
 
     console.log("Insertando en ng_whatsapp_messages...");
