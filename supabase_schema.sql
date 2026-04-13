@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.ng_clients (
     phone TEXT NOT NULL UNIQUE,
     email TEXT,
     branch TEXT,
+    ai_summary TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -111,7 +112,38 @@ CREATE POLICY "Ver error logs" ON public.ng_error_logs FOR SELECT USING (true);
 -- Agregar columna de observaciones a seguimientos
 ALTER TABLE public.ng_follow_ups ADD COLUMN IF NOT EXISTS observations TEXT;
 
+-- Agregar columna de resumen IA a clientes
+ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+
 -- Política de actualización para seguimientos
 DROP POLICY IF EXISTS "Actualizar seguimientos" ON public.ng_follow_ups;
-CREATE POLICY "Actualizar seguimientos" ON public.ng_follow_ups FOR UPDATE USING (true);
+CREATE POLICY "Actualizar seguimientos" ON public.ng_follow_ups FOR UPDATE USING (true) WITH CHECK (true);
+
+-- Política de actualización para clientes
+DROP POLICY IF EXISTS "Actualizar clientes" ON public.ng_clients;
+CREATE POLICY "Actualizar clientes" ON public.ng_clients FOR UPDATE USING (true) WITH CHECK (true);
+
+-- Política de eliminación para clientes
+DROP POLICY IF EXISTS "Eliminar clientes" ON public.ng_clients;
+CREATE POLICY "Eliminar clientes" ON public.ng_clients FOR DELETE USING (true);
+
+-- Política de actualización para facturas
+DROP POLICY IF EXISTS "Actualizar facturas" ON public.ng_invoices;
+CREATE POLICY "Actualizar facturas" ON public.ng_invoices FOR UPDATE USING (true);
+
+-- ═══════════════════════════════════════════════
+-- GRANT: Permisos para roles anon y authenticated
+-- ═══════════════════════════════════════════════
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_clients TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_clients TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_invoices TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_invoices TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_follow_ups TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_follow_ups TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_whatsapp_messages TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_whatsapp_messages TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_templates TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ng_templates TO authenticated;
+GRANT SELECT, INSERT ON public.ng_error_logs TO anon;
+GRANT SELECT, INSERT ON public.ng_error_logs TO authenticated;
 

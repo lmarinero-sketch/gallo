@@ -32,7 +32,12 @@ import {
   UploadCloud,
   PenLine,
   Table2,
-  Lock
+  Lock,
+  Users,
+  RefreshCw,
+  Phone,
+  ShoppingCart,
+  Eye
 } from 'lucide-react';
 
 export type ModalType = 'error' | 'success' | 'info';
@@ -98,6 +103,7 @@ function Sidebar() {
         <NavItem to="/" icon={Home} text="Inicio" />
         <NavItem to="/mensajeria" icon={MessageSquare} text="Mensajería" />
         <NavItem to="/subir" icon={Upload} text="Subir Factura" />
+        <NavItem to="/clientes" icon={Users} text="Clientes" />
         <NavItem to="/seguimientos" icon={Clock} text="Seguimientos" />
         <div className="my-4" />
         <NavItem to="/configuracion" icon={Settings} text="Configuración" />
@@ -1608,6 +1614,357 @@ function FollowUps() {
   );
 }
 
+function Clients() {
+  const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
+  const [clients, setClients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selectedClient, setSelectedClient] = useState<any>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [clientInvoices, setClientInvoices] = useState<any[]>([]);
+  const [clientFollowUps, setClientFollowUps] = useState<any[]>([]);
+  const [clientMsgCount, setClientMsgCount] = useState(0);
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [generatingSummaries, setGeneratingSummaries] = useState(false);
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('ng_clients')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setClients(data || []);
+    setLoading(false);
+
+    // Proactively generate summaries for clients without one
+    const withoutSummary = (data || []).filter((c: any) => !c.ai_summary);
+    if (withoutSummary.length > 0) {
+      generateSummariesBackground();
+    }
+  };
+
+  const generateSummariesBackground = async () => {
+    setGeneratingSummaries(true);
+    try {
+      await supabase.functions.invoke('generate-client-summary', { body: {} });
+      // Refresh clients to get the new summaries
+      const { data } = await supabase.from('ng_clients').select('*').order('created_at', { ascending: false });
+      setClients(data || []);
+    } catch (e) {
+      console.error('Error generating summaries:', e);
+    }
+    setGeneratingSummaries(false);
+  };
+
+  const refreshSingleSummary = async (clientId: string) => {
+    try {
+      await supabase.from('ng_clients').update({ ai_summary: null }).eq('id', clientId);
+      await supabase.functions.invoke('generate-client-summary', { body: { clientId } });
+      const { data } = await supabase.from('ng_clients').select('*').eq('id', clientId).single();
+      if (data) {
+        setClients(prev => prev.map(c => c.id === clientId ? data : c));
+        if (selectedClient?.id === clientId) setSelectedClient(data);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const openClientPanel = async (client: any) => {
+    setSelectedClient(client);
+    setPanelOpen(true);
+    setEditingName(false);
+
+    // Fetch invoices
+    const { data: invs } = await supabase.from('ng_invoices')
+      .select('*').eq('client_id', client.id)
+      .order('created_at', { ascending: false });
+    setClientInvoices(invs || []);
+
+    // Fetch follow-ups
+    const { data: fus } = await supabase.from('ng_follow_ups')
+      .select('*').eq('client_id', client.id)
+      .order('scheduled_date', { ascending: false });
+    setClientFollowUps(fus || []);
+
+    // Count messages
+    const { count } = await supabase.from('ng_whatsapp_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('client_phone', client.phone);
+    setClientMsgCount(count || 0);
+  };
+
+  const saveClientName = async () => {
+    if (!editName.trim() || !selectedClient) return;
+    const { error } = await supabase.from('ng_clients').update({ name: editName.trim() }).eq('id', selectedClient.id);
+    if (error) {
+      showSystemModal('Error guardando el nombre', 'Error guardando el nombre del cliente. Revisa las policies de la base de datos.', 'error');
+      return;
+    }
+    const updated = { ...selectedClient, name: editName.trim() };
+    setSelectedClient(updated);
+    setClients(prev => prev.map(c => c.id === selectedClient.id ? updated : c));
+    setEditingName(false);
+    showSystemModal('Nombre actualizado', `El cliente ahora se llama "${editName.trim()}"`, 'success');
+  };
+
+  const filtered = clients.filter(c => {
+    const q = search.toLowerCase();
+    return !q || (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
+  });
+
+  const totalInvoiceAmount = (invs: any[]) => invs.reduce((acc: number, i: any) => acc + (parseFloat(i.amount) || 0), 0);
+
+  return (
+    <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} min-h-screen bg-[#F8FAFC] flex flex-col`}>
+      <TopBar title="Neumáticos Gallo" subtitle="Clientes" />
+      <main className="px-10 py-6 w-full">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mr-4">
+              <Users className="w-6 h-6 text-indigo-500" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold text-slate-800">Clientes</h2>
+              <p className="text-[13px] text-slate-400">Base de datos de todos los contactos · Resumen IA automático</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {generatingSummaries && (
+              <span className="text-[11px] text-indigo-500 font-medium bg-indigo-50 px-3 py-1.5 rounded-full flex items-center gap-2 animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Generando resúmenes IA...
+              </span>
+            )}
+            <span className="text-[13px] font-medium text-slate-400">{clients.length} clientes</span>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] p-5">
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Clientes</p>
+            <p className="text-[26px] font-extrabold text-slate-800">{clients.length}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] p-5">
+            <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider mb-1">Con Factura</p>
+            <p className="text-[26px] font-extrabold text-indigo-600">{clients.filter(c => c.ai_summary && c.ai_summary.toLowerCase().includes('factura')).length || '—'}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] p-5">
+            <p className="text-[11px] font-bold text-green-500 uppercase tracking-wider mb-1">Con Resumen IA</p>
+            <p className="text-[26px] font-extrabold text-green-600">{clients.filter(c => c.ai_summary).length}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] p-5">
+            <p className="text-[11px] font-bold text-amber-500 uppercase tracking-wider mb-1">Sin Resumen</p>
+            <p className="text-[26px] font-extrabold text-amber-600">{clients.filter(c => !c.ai_summary).length}</p>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center">
+            <div className="flex-1 max-w-md relative">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Buscar por nombre o teléfono..." 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-[13px] font-medium text-slate-700 focus:outline-none focus:bg-white focus:border-blue-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Client List */}
+          <div className="divide-y divide-slate-50">
+            {loading ? (
+              <div className="p-12 text-center text-slate-400 text-[14px]">Cargando clientes...</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-[14px]">No se encontraron clientes</div>
+            ) : filtered.map(client => (
+              <div 
+                key={client.id} 
+                onClick={() => openClientPanel(client)}
+                className="flex items-center px-6 py-4 hover:bg-blue-50/40 transition-colors cursor-pointer group"
+              >
+                <img src="/images.png" alt="" className="w-10 h-10 rounded-full object-cover mr-4 border border-slate-200" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-bold text-slate-800 truncate">{client.name || 'Sin nombre'}</p>
+                  <p className="text-[12px] text-slate-400 font-mono">{client.phone}</p>
+                </div>
+                {client.ai_summary ? (
+                  <div className="flex-1 max-w-[400px] mx-4">
+                    <p className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed italic">{client.ai_summary}</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 max-w-[400px] mx-4">
+                    <span className="text-[11px] text-slate-300 italic">Sin resumen IA</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  {client.ai_summary && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold">IA</span>}
+                  <Eye className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+
+      {/* SLIDE-OVER CLIENT DETAIL PANEL */}
+      {panelOpen && selectedClient && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPanelOpen(false)}></div>
+          <div className="relative w-full max-w-[580px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 overflow-y-auto">
+            
+            {/* Panel Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-5 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center">
+                <img src="/images.png" alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white/30 mr-4" />
+                <div>
+                  {editingName ? (
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={editName} 
+                        onChange={e => setEditName(e.target.value)} 
+                        onKeyDown={e => e.key === 'Enter' && saveClientName()}
+                        className="bg-white/20 text-white border border-white/30 rounded-lg px-3 py-1.5 text-[15px] font-bold focus:outline-none focus:bg-white/30 w-[200px]"
+                        autoFocus
+                      />
+                      <button onClick={saveClientName} className="bg-white/20 hover:bg-white/30 text-white p-1.5 rounded-lg transition-colors"><Check className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingName(false)} className="text-white/60 hover:text-white p-1.5 rounded-lg transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-white font-bold text-[17px]">{selectedClient.name || 'Sin nombre'}</h3>
+                      <button onClick={() => { setEditName(selectedClient.name || ''); setEditingName(true); }} className="text-white/50 hover:text-white p-1 rounded transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    <Phone className="w-3 h-3 text-indigo-200" />
+                    <p className="text-indigo-100 text-[13px] font-mono">{selectedClient.phone}</p>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setPanelOpen(false)} className="text-white/70 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            {/* AI Summary Card */}
+            <div className="p-5 border-b border-slate-100 flex-shrink-0">
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" /> Resumen Inteligente
+                  </p>
+                  <button onClick={() => refreshSingleSummary(selectedClient.id)} className="text-[10px] font-bold text-indigo-400 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                    <RefreshCw className="w-3 h-3" /> Regenerar
+                  </button>
+                </div>
+                <p className="text-[13px] text-slate-700 leading-relaxed">
+                  {selectedClient.ai_summary || 'Resumen pendiente de generación...'}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-slate-100 flex-shrink-0">
+              <div className="bg-blue-50 rounded-xl p-3 text-center">
+                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Facturas</p>
+                <p className="text-[20px] font-extrabold text-blue-700">{clientInvoices.length}</p>
+              </div>
+              <div className="bg-green-50 rounded-xl p-3 text-center">
+                <p className="text-[10px] font-bold text-green-500 uppercase tracking-wider">Facturado</p>
+                <p className="text-[16px] font-extrabold text-green-700">{formatMoney(totalInvoiceAmount(clientInvoices))}</p>
+              </div>
+              <div className="bg-amber-50 rounded-xl p-3 text-center">
+                <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Mensajes</p>
+                <p className="text-[20px] font-extrabold text-amber-700">{clientMsgCount}</p>
+              </div>
+            </div>
+
+            {/* Invoices Section */}
+            <div className="p-5 border-b border-slate-100 flex-shrink-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <ShoppingCart className="w-3.5 h-3.5" /> Facturas Asociadas
+              </p>
+              {clientInvoices.length === 0 ? (
+                <p className="text-[13px] text-slate-400 italic">Sin facturas registradas</p>
+              ) : clientInvoices.map((inv: any, idx: number) => (
+                <div key={idx} className="bg-slate-50 rounded-xl p-4 mb-3 border border-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-bold text-slate-600">
+                      {inv.invoice_number ? `Factura N° ${inv.invoice_number}` : `Factura #${idx + 1}`}
+                    </span>
+                    <span className="text-[14px] font-extrabold text-green-700">{formatMoney(inv.amount || 0)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2">{inv.purchase_date ? new Date(inv.purchase_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Sin fecha'}</p>
+                  
+                  {/* Products table for this invoice */}
+                  {Array.isArray(inv.items) && inv.items.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden mt-2">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-white">
+                            <th className="text-left px-3 py-2 text-[9px] font-bold text-slate-400 uppercase">Cant.</th>
+                            <th className="text-left px-3 py-2 text-[9px] font-bold text-slate-400 uppercase">Producto</th>
+                            <th className="text-right px-3 py-2 text-[9px] font-bold text-slate-400 uppercase">Importe</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {inv.items.map((item: any, i: number) => (
+                            <tr key={i}>
+                              <td className="px-3 py-1.5 text-[12px] font-bold text-slate-700">{typeof item === 'object' ? (item.qty || 1) : 1}</td>
+                              <td className="px-3 py-1.5 text-[12px] text-slate-700">{typeof item === 'object' ? item.description : item}</td>
+                              <td className="px-3 py-1.5 text-[12px] font-mono text-right text-slate-600">{typeof item === 'object' && item.total ? formatMoney(item.total) : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Follow-ups Section */}
+            <div className="p-5 flex-shrink-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5" /> Seguimientos
+              </p>
+              {clientFollowUps.length === 0 ? (
+                <p className="text-[13px] text-slate-400 italic">Sin seguimientos registrados</p>
+              ) : clientFollowUps.map((fu: any, idx: number) => (
+                <div key={idx} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${fu.status === 'pending' ? 'bg-amber-400' : fu.status === 'completed' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-slate-700">{fu.reason}</p>
+                    {fu.observations && <p className="text-[11px] text-slate-400 italic truncate">{fu.observations}</p>}
+                  </div>
+                  <span className="text-[11px] text-slate-400 flex-shrink-0">{new Date(fu.scheduled_date).toLocaleDateString('es-AR')}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${fu.status === 'pending' ? 'bg-amber-100 text-amber-700' : fu.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {fu.status === 'pending' ? 'Pendiente' : fu.status === 'completed' ? 'Completado' : 'Cancelado'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfigTemplates() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1930,6 +2287,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/subir" element={<UploadInvoice />} />
           <Route path="/mensajeria" element={<Messenger />} />
+          <Route path="/clientes" element={<Clients />} />
           <Route path="/seguimientos" element={<FollowUps />} />
           <Route path="/configuracion" element={<ConfigTemplates />} />
         </Routes>
