@@ -1924,7 +1924,7 @@ function App() {
 
   return (
     <AppContext.Provider value={{ isSidebarOpen, toggleSidebar, showSystemModal }}>
-      <div className="flex h-screen overflow-hidden font-sans selection:bg-blue-100 transition-colors duration-300 relative bg-[#000]">
+      <div className="flex h-screen overflow-x-hidden overflow-y-auto font-sans selection:bg-blue-100 transition-colors duration-300 relative bg-[#000]">
         <Sidebar />
         <Routes>
           <Route path="/" element={<Dashboard />} />
