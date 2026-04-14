@@ -225,7 +225,7 @@ function Dashboard() {
          {/* ACTION LIST CARDS */}
          <div className="space-y-4">
            
-           <div className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+           <Link to="/subir" className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] no-underline">
              <div className="flex items-center">
                <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mr-5 shrink-0">
                  <FileText className="w-5 h-5 text-blue-500" />
@@ -238,9 +238,9 @@ function Dashboard() {
              <div className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center">
                Subir PDF <ChevronDown className="w-4 h-4 ml-1" />
              </div>
-           </div>
+            </Link>
 
-           <div className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+           <Link to="/mensajeria" className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] no-underline">
              <div className="flex items-center">
                <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mr-5 shrink-0">
                  <MessageSquare className="w-5 h-5 text-green-500" />
@@ -253,9 +253,9 @@ function Dashboard() {
              <div className="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center">
                {stats.messages} mensajes <ChevronDown className="w-4 h-4 ml-1" />
              </div>
-           </div>
+            </Link>
 
-           <div className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+           <Link to="/configuracion" className="bg-white hover:bg-slate-50 transition-colors cursor-pointer border border-slate-200/60 rounded-2xl p-5 flex items-center justify-between shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] no-underline">
              <div className="flex items-center">
                <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center mr-5 shrink-0">
                  <Settings className="w-5 h-5 text-purple-500" />
@@ -268,7 +268,7 @@ function Dashboard() {
              <div className="bg-purple-50 text-purple-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center">
                1 tema <ChevronDown className="w-4 h-4 ml-1" />
              </div>
-           </div>
+            </Link>
 
          </div>
 
