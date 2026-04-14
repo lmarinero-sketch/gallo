@@ -974,7 +974,7 @@ function Messenger() {
           },
           body: JSON.stringify({
              number: activeContact,
-             message: tempMsg.body
+             messages: { content: tempMsg.body }
           })
         });
       } catch (err) {
@@ -1368,7 +1368,7 @@ function FollowUps() {
         await fetch(`${builderBotUrl}/${builderBotBotId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-builderbot': builderBotKey },
-          body: JSON.stringify({ number: phone, message: contactMsg })
+          body: JSON.stringify({ number: phone, messages: { content: contactMsg } })
         });
       } catch (err) { console.error(err); }
     }
@@ -2256,7 +2256,7 @@ function SystemModal({
                 await fetch(`${builderBotUrl}/${builderBotBotId}/messages`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'x-api-builderbot': builderBotKey },
-                  body: JSON.stringify({ number: '5492645438114', message: alertMsg })
+                  body: JSON.stringify({ number: '5492645438114', messages: { content: alertMsg } })
                 });
               } catch (err) { console.error('Error sending alert to admin:', err); }
             }
