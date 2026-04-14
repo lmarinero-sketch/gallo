@@ -783,13 +783,12 @@ function Messenger() {
   };
 
   
-  const [templates, setTemplates] = useState<any[]>([
-    { shortcut: '/SALUDO', body: '¡Hola {{nombre}}! Soy de Neumáticos Gallo. ¿En qué te podemos ayudar hoy?', category: 'General' },
-    { shortcut: '/ROTACION', body: 'Hola {{nombre}}, vimos en nuestro historial que cambiaste {{productos}} el pasado {{fecha}}. ¿Te gustaría agendar una rotación sin cargo?', category: 'Seguimiento' },
-    { shortcut: '/PRECIO', body: 'El precio total de tu última consulta fue de ${{importe}}. Avisame si lo validamos.', category: 'Ventas' },
-  ]);
+  const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [filteredTemplates, setFilteredTemplates] = useState<any[]>([]);
+  const [showAddTemplate, setShowAddTemplate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [tplForm, setTplForm] = useState({ shortcut: '/', body: '', category: 'General' });
 
   useEffect(() => {
     fetchMessages();
@@ -1183,27 +1182,80 @@ function Messenger() {
 
             <div className="relative z-20">
               {showTemplates && (
-                <div className="absolute bottom-full left-12 w-[400px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
-                  <div className="bg-slate-50 p-2 border-b border-slate-100 flex items-center justify-between">
+                <div className="absolute bottom-full left-12 w-[440px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
+                  <div className="bg-slate-50 p-2.5 border-b border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Atajos / Plantillas</span>
-                    <span className="text-[10px] text-slate-400">{filteredTemplates.length} encontradas</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400">{filteredTemplates.length} encontradas</span>
+                      <button onClick={(e) => { e.stopPropagation(); setShowAddTemplate(!showAddTemplate); setEditingTemplate(null); setTplForm({ shortcut: '/', body: '', category: 'General' }); }} className="bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-colors flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                        Nueva
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Add/Edit Template Form */}
+                  {showAddTemplate && (
+                    <div className="p-3 border-b border-slate-200 bg-blue-50/50 space-y-2">
+                      <div className="flex gap-2">
+                        <input type="text" value={tplForm.shortcut} onChange={e => setTplForm({...tplForm, shortcut: e.target.value})} placeholder="/ATAJO" className="w-[100px] border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] font-bold focus:border-blue-400 focus:outline-none bg-white" />
+                        <select value={tplForm.category} onChange={e => setTplForm({...tplForm, category: e.target.value})} className="border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] bg-white focus:border-blue-400 focus:outline-none">
+                          <option>General</option><option>Seguimiento</option><option>Ventas</option><option>Soporte</option>
+                        </select>
+                      </div>
+                      <textarea value={tplForm.body} onChange={e => setTplForm({...tplForm, body: e.target.value})} placeholder="Texto de la plantilla... usa {{nombre}}, {{productos}}, {{importe}}" rows={2} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] focus:border-blue-400 focus:outline-none bg-white resize-none" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-1">
+                          {['nombre','productos','importe','fecha'].map(v => (
+                            <button key={v} onClick={() => setTplForm({...tplForm, body: tplForm.body + `{{${v}}}`})} className="text-[10px] bg-white border border-slate-200 px-1.5 py-0.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors">{`{{${v}}}`}</button>
+                          ))}
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button onClick={() => { setShowAddTemplate(false); setEditingTemplate(null); }} className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 transition-colors">Cancelar</button>
+                          <button onClick={async () => {
+                            const tpl = { shortcut: tplForm.shortcut.startsWith('/') ? tplForm.shortcut.toUpperCase() : `/${tplForm.shortcut.toUpperCase()}`, body: tplForm.body, category: tplForm.category };
+                            if (editingTemplate) {
+                              await supabase.from('ng_templates').update(tpl).eq('id', editingTemplate.id);
+                            } else {
+                              await supabase.from('ng_templates').insert([tpl]);
+                            }
+                            fetchTemplates();
+                            setShowAddTemplate(false);
+                            setEditingTemplate(null);
+                            setTplForm({ shortcut: '/', body: '', category: 'General' });
+                          }} disabled={!tplForm.body.trim() || !tplForm.shortcut.trim()} className="bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white text-[11px] font-bold px-3 py-1 rounded-md transition-colors">
+                            {editingTemplate ? 'Actualizar' : 'Guardar'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="max-h-60 overflow-y-auto">
                     {filteredTemplates.map((t, idx) => (
                       <div 
-                        key={idx} 
-                        onClick={() => applyTemplate(t.body)}
-                        className="p-3 hover:bg-blue-50 border-b border-slate-50 cursor-pointer transition-colors"
+                        key={t.id || idx} 
+                        className="p-3 hover:bg-blue-50 border-b border-slate-50 cursor-pointer transition-colors group"
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[13px] font-bold text-blue-600">{t.shortcut}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{t.category}</span>
+                          <span className="text-[13px] font-bold text-blue-600 cursor-pointer" onClick={() => applyTemplate(t.body)}>{t.shortcut}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{t.category}</span>
+                            <button onClick={(e) => { e.stopPropagation(); setEditingTemplate(t); setTplForm({ shortcut: t.shortcut, body: t.body, category: t.category }); setShowAddTemplate(true); }} className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600 p-0.5 transition-all" title="Editar">
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button onClick={async (e) => { e.stopPropagation(); await supabase.from('ng_templates').delete().eq('id', t.id); fetchTemplates(); }} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 p-0.5 transition-all" title="Eliminar">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-[12px] text-slate-500 truncate">{t.body}</p>
+                        <p className="text-[12px] text-slate-500 truncate cursor-pointer" onClick={() => applyTemplate(t.body)}>{t.body}</p>
                       </div>
                     ))}
-                    {filteredTemplates.length === 0 && (
-                      <div className="p-4 text-center text-sm text-slate-400 font-medium">No se encontraron atajos para "{newMessage.split(' ').pop()}"</div>
+                    {filteredTemplates.length === 0 && !showAddTemplate && (
+                      <div className="p-4 text-center text-sm text-slate-400 font-medium">
+                        No hay plantillas. <button onClick={() => setShowAddTemplate(true)} className="text-blue-500 hover:underline">Crear la primera</button>
+                      </div>
                     )}
                   </div>
                 </div>
