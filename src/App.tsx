@@ -1293,9 +1293,9 @@ function Messenger() {
 
       {/* RIGHT SIDE PANEL: Facturas Asociadas */}
       {activeContact && activeContactInfo?.invoices && activeContactInfo.invoices.length > 0 && (
-        <div className="w-[320px] bg-[#090E17] text-white flex flex-col shrink-0 overflow-y-auto border-l border-slate-800 relative z-20">
-          <div className="p-8 flex flex-col items-center border-b border-slate-800/80">
-            <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xl uppercase text-slate-300 mb-4 shadow-md border border-slate-700/50">
+        <div className="w-[320px] bg-[#0A0A0A] text-white flex flex-col shrink-0 overflow-y-auto border-l border-white/5 relative z-20">
+          <div className="p-8 flex flex-col items-center border-b border-white/5">
+            <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center font-bold text-xl uppercase text-slate-300 mb-4 shadow-md border border-white/10">
               {activeContactInfo?.name ? activeContactInfo.name.substring(0,2) : activeContact.substring(0,2)}
             </div>
             <h3 className="font-bold text-center text-[15px] tracking-wide text-white">{activeContactInfo?.name || 'CLIENTE'}</h3>
@@ -1310,22 +1310,22 @@ function Messenger() {
             
             <div className="space-y-4">
               {activeContactInfo.invoices.map((inv: any, idx: number) => (
-                <div key={idx} className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4 transition-colors hover:bg-slate-800/80 relative overflow-hidden group">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500/80 transform origin-top scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
+                <div key={idx} className="bg-[#1A1A1A] border border-white/5 rounded-xl p-4 transition-colors hover:border-[#00FF88]/30 hover:bg-[#1A1A1A]/80 relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-[#00FF88]/80 transform origin-top scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
                   
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-[13px] font-bold text-cyan-400 tracking-wider">FA-{inv.id.substring(0,6).toUpperCase()}</span>
-                    <span className="text-[9px] font-bold bg-[#EAB308]/10 text-[#EAB308] border border-[#EAB308]/20 px-2 py-0.5 rounded-[4px] tracking-wider">PENDIENTE</span>
+                    <span className="text-[13px] font-bold text-[#00FF88] tracking-wider">FA-{inv.id.substring(0,6).toUpperCase()}</span>
+                    <span className="text-[9px] font-bold bg-[#FACC15]/10 text-[#FACC15] border border-[#FACC15]/20 px-2 py-0.5 rounded-[4px] tracking-wider">PENDIENTE</span>
                   </div>
                   
-                  <div className="space-y-2 mb-4 text-[12px] text-slate-300">
-                    <p className="flex justify-between border-b border-slate-700/50 pb-1">
+                  <div className="space-y-2 text-[12px] text-slate-300">
+                    <p className="flex justify-between border-b border-white/5 pb-1">
                       <span className="text-slate-500 font-medium">Motivo:</span>
                       <span className="truncate max-w-[140px] font-medium" title={Array.isArray(inv.items) ? inv.items.join(', ') : inv.items || 'Detalles'}>
                         {Array.isArray(inv.items) ? inv.items[0] : (inv.items || 'Detalles').split(',')[0]}
                       </span>
                     </p>
-                    <p className="flex justify-between border-b border-slate-700/50 pb-1">
+                    <p className="flex justify-between border-b border-white/5 pb-1">
                       <span className="text-slate-500 font-medium">Total:</span>
                       <span className="font-bold text-white">${inv.amount}</span>
                     </p>
@@ -1335,10 +1335,12 @@ function Messenger() {
                     </p>
                   </div>
                   
-                  <button className="w-full py-2.5 rounded-lg border border-cyan-500/30 text-cyan-400 text-[10px] font-bold tracking-[0.2em] flex items-center justify-center hover:bg-cyan-500 hover:text-white transition-all">
-                    <ExternalLink className="w-3 h-3 mr-2" />
-                    VER GALERÍA
-                  </button>
+                  {inv.file_url && (
+                    <a href={inv.file_url} target="_blank" rel="noreferrer" className="mt-4 w-full py-2.5 rounded-lg border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-bold tracking-[0.2em] flex items-center justify-center hover:bg-[#00FF88] hover:text-black transition-all">
+                      <ExternalLink className="w-3 h-3 mr-2" />
+                      VER PDF
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
