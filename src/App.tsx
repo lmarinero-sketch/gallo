@@ -962,14 +962,15 @@ function Messenger() {
     // Send to BuilderBot Cloud
     const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
     const builderBotKey = import.meta.env.VITE_BUILDERBOT_API_KEY;
+    const builderBotBotId = import.meta.env.VITE_BUILDERBOT_BOT_ID;
     
     if (builderBotUrl && builderBotKey) {
       try {
-        await fetch(`${builderBotUrl}/messages/send`, {
+        await fetch(`${builderBotUrl}/${builderBotBotId}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${builderBotKey}`
+            'x-api-builderbot': builderBotKey
           },
           body: JSON.stringify({
              number: activeContact,
@@ -1361,11 +1362,12 @@ function FollowUps() {
     // Send via BuilderBot
     const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
     const builderBotKey = import.meta.env.VITE_BUILDERBOT_API_KEY;
+    const builderBotBotId = import.meta.env.VITE_BUILDERBOT_BOT_ID;
     if (builderBotUrl && builderBotKey) {
       try {
-        await fetch(`${builderBotUrl}/messages/send`, {
+        await fetch(`${builderBotUrl}/${builderBotBotId}/messages`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${builderBotKey}` },
+          headers: { 'Content-Type': 'application/json', 'x-api-builderbot': builderBotKey },
           body: JSON.stringify({ number: phone, message: contactMsg })
         });
       } catch (err) { console.error(err); }
@@ -2247,12 +2249,13 @@ function SystemModal({
             // Send WhatsApp to admin via BuilderBot
             const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
             const builderBotKey = import.meta.env.VITE_BUILDERBOT_API_KEY;
+    const builderBotBotId = import.meta.env.VITE_BUILDERBOT_BOT_ID;
             if (builderBotUrl && builderBotKey) {
               try {
                 const alertMsg = `⚠️ *REPORTE DE PROBLEMA*\n\n📋 *Título:* ${title}\n💬 *Detalle:* ${message}\n🏷️ *Tipo:* ${type}\n📅 *Fecha:* ${new Date().toLocaleString('es-AR')}`;
-                await fetch(`${builderBotUrl}/messages/send`, {
+                await fetch(`${builderBotUrl}/${builderBotBotId}/messages`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${builderBotKey}` },
+                  headers: { 'Content-Type': 'application/json', 'x-api-builderbot': builderBotKey },
                   body: JSON.stringify({ number: '5492645438114', message: alertMsg })
                 });
               } catch (err) { console.error('Error sending alert to admin:', err); }
