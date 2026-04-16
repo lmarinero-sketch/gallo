@@ -1001,6 +1001,23 @@ function Messenger() {
 
   const activeMessages = messages.filter(m => m.client_phone === activeContact).reverse();
 
+  const is24hExpired = React.useMemo(() => {
+    if (!activeMessages || activeMessages.length === 0) return true;
+    
+    let lastIncoming = null;
+    for (let i = activeMessages.length - 1; i >= 0; i--) {
+      if (activeMessages[i].direction === 'incoming') {
+        lastIncoming = activeMessages[i];
+        break;
+      }
+    }
+    
+    if (!lastIncoming) return true;
+    
+    const diffHours = (Date.now() - new Date(lastIncoming.created_at).getTime()) / (1000 * 60 * 60);
+    return diffHours > 24;
+  }, [activeMessages]);
+
   const renderMedia = (msg: any) => {
     if (!msg.attachment_urls || msg.attachment_urls.length === 0) return null;
     const url = msg.attachment_urls[0];
@@ -1264,21 +1281,41 @@ function Messenger() {
                 </div>
               )}
 
-              <div className="bg-black/90 backdrop-blur-xl p-4 shrink-0 flex items-center shadow-lg border-t border-white/10">
+              <div className="bg-black/90 backdrop-blur-xl p-4 shrink-0 flex items-center shadow-lg border-t border-white/10 relative">
+                {is24hExpired && (
+                  <div className="absolute top-0 left-0 right-0 -translate-y-full bg-[#1A1A1A] border-y border-[#FACC15]/30 px-6 py-2.5 flex items-center justify-center shadow-lg">
+                    <AlertTriangle className="w-4 h-4 text-[#FACC15] mr-2" />
+                    <span className="text-[12px] font-bold text-[#FACC15]">Sesión expirada (+24hs). DEBES iniciar con una Plantilla oficial (usa "/")</span>
+                  </div>
+                )}
+                
                 <form onSubmit={handleSendMessage} className="flex-1 mx-2">
                   <input 
                     type="text" 
                     value={newMessage}
-                    onChange={handleInputChange}
-                    placeholder="Escribe '/' para plantillas o simplemente un mensaje..." 
-                    className="w-full bg-white/5 border border-white/10 rounded-full px-5 py-3 text-[14px] text-white focus:outline-none focus:bg-white/10 focus:border-[#00FF88] transition-all shadow-inner"
+                    onChange={(e) => {
+                      if (is24hExpired && !e.target.value.startsWith('/') && e.target.value.length > 0) {
+                        showSystemModal("Sesión Expirada", "Solo puedes utilizar Plantillas '/' para retomar el diálogo.", "error");
+                        // force empty or just keep '/'
+                        setNewMessage(e.target.value.startsWith('/') ? e.target.value : "/");
+                        return;
+                      }
+                      handleInputChange(e);
+                    }}
+                    placeholder={is24hExpired ? "Escribe '/' para elegir plantilla..." : "Escribe '/' para plantillas o simplemente un mensaje..."} 
+                    className={`w-full border rounded-full px-5 py-3 text-[14px] focus:outline-none transition-all shadow-inner 
+                      ${is24hExpired 
+                        ? 'bg-[#FACC15]/5 border-[#FACC15]/30 text-[#FACC15] focus:bg-[#FACC15]/10 focus:border-[#FACC15] placeholder:text-[#FACC15]/50' 
+                        : 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-[#00FF88]'}`}
                   />
                 </form>
 
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!newMessage.trim()}
-                  className="w-12 h-12 bg-[#00FF88] hover:bg-[#00E57A] disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all shadow-md ml-2"
+                  disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/'))}
+                  className={`w-12 h-12 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all shadow-md ml-2
+                    ${is24hExpired ? 'bg-[#FACC15] hover:bg-[#EAB308] text-black' : 'bg-[#00FF88] hover:bg-[#00E57A]'}
+                  `}
                 >
                   <div style={{transform: "rotate(45deg) translate(-2px, 2px)"}}><Upload className="w-5 h-5" /></div>
                 </button>
