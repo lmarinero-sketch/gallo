@@ -43,6 +43,9 @@ serve(async (req) => {
        console.log(`Media detectada: ${urlTempFile}`);
     }
 
+    const isFromMe = data.fromMe || (data.key && data.key.fromMe) || false;
+    const computedDirection = isFromMe ? 'outgoing' : 'incoming';
+
     if (!phone || (!body && !urlTempFile)) {
       console.warn("Payload ignorado debido a falta de phone o body/media.");
       return new Response(JSON.stringify({ status: "ignored - missing fields" }), {
@@ -60,6 +63,22 @@ serve(async (req) => {
       }, { onConflict: 'phone' }).select();
     }
 
+    if (isFromMe) {
+      const { data: recentMsg } = await supabase
+        .from('ng_whatsapp_messages')
+        .select('id')
+        .eq('body', body)
+        .eq('client_phone', phone)
+        .eq('direction', 'outgoing')
+        .gte('created_at', new Date(Date.now() - 10000).toISOString())
+        .limit(1);
+
+      if (recentMsg && recentMsg.length > 0) {
+        console.log("Mensaje saliente duplicado detectado (registrado previamente por la UI). Ignorando inserción del webhook.");
+        return new Response(JSON.stringify({ success: true, reason: 'duplicate' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+      }
+    }
+
     console.log("Insertando en ng_whatsapp_messages...");
     // Insert message history
     const { error, data: dbData } = await supabase
@@ -67,7 +86,7 @@ serve(async (req) => {
       .insert({
         client_phone: phone,
         body: body || 'Multimedia',
-        direction: 'incoming',
+        direction: computedDirection,
         message_type: messageType,
         attachment_urls: urlTempFile ? [urlTempFile] : null
       })
