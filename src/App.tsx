@@ -1205,8 +1205,8 @@ function Messenger() {
                 <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] ${msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
                   <div className={`px-4 py-3 rounded-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.1)] relative
                     ${msg.direction === 'outgoing' 
-                      ? 'bg-[#00FF88]/10 border border-[#00FF88]/30 text-[#00FF88] rounded-tr-sm backdrop-blur-md shadow-[0_0_15px_rgba(0,255,136,0.05)]' 
-                      : 'bg-white/5 border border-white/10 text-white rounded-tl-sm backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]'
+                      ? 'bg-blue-600 text-white rounded-tr-sm' 
+                      : 'bg-white border border-slate-100 text-slate-800 rounded-tl-sm'
                     }`}
                   >
                     {renderMedia(msg)}
@@ -1214,7 +1214,7 @@ function Messenger() {
                       <p className="text-[14px] leading-loose whitespace-pre-wrap font-medium">{formatMessageBody(msg.body)}</p>
                     )}
                     
-                    <div className={`text-[10px] mt-1.5 text-right font-medium flex items-center justify-end ${msg.direction === 'outgoing' ? 'text-[#00FF88]/70' : 'text-slate-400'}`}>
+                    <div className={`text-[10px] mt-1.5 text-right font-medium flex items-center justify-end ${msg.direction === 'outgoing' ? 'text-blue-100' : 'text-slate-400'}`}>
                       {new Date(msg.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                       {msg.direction === 'outgoing' && <span className="ml-1 text-[10px]">✓✓</span>}
                     </div>
