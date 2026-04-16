@@ -69,7 +69,7 @@ function Sidebar() {
           {isSidebarOpen && text}
         </div>
         {badge && isSidebarOpen && (
-          <span className="bg-[#00FF88] text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
             {badge}
           </span>
         )}
@@ -151,10 +151,10 @@ function TopBar({ title, subtitle }: { title: string, subtitle: string }) {
             VJ
           </div>
         </div>
-        <button className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-[#9CA3AF] hover:text-white hover:bg-slate-50 transition-colors">
+        <button className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
           <Search className="w-4 h-4" />
         </button>
-        <button onClick={() => (window as any).toggleTheme()} className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-[#9CA3AF] hover:text-white hover:bg-slate-50 transition-colors">
+        <button onClick={() => (window as any).toggleTheme()} className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
           <Moon className="w-4 h-4" />
         </button>
       </div>
@@ -518,7 +518,7 @@ function UploadInvoice() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Teléfono</p>
                         <div className="flex items-center gap-2">
                           <p className="text-[14px] font-mono font-bold text-slate-700">{parsedData.phone || 'No especificado'}</p>
-                          {parsedData.phone && <span className="text-[9px] bg-[#00FF88]/20 text-[#00FF88] px-2 py-0.5 rounded font-bold">549 OK</span>}
+                          {parsedData.phone && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold">549 OK</span>}
                         </div>
                       </div>
                       {parsedData.paymentCondition && (
@@ -1046,30 +1046,30 @@ function Messenger() {
   };
 
   return (
-    <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} h-screen bg-[#000000] flex overflow-hidden text-white`}>
+    <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} h-screen bg-slate-100 flex overflow-hidden`}>
       
-      <div className="w-[340px] bg-[#0A0A0A] border-r border-white/10 flex flex-col shrink-0">
-        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/50 backdrop-blur-md">
-          <h2 className="text-lg font-bold text-white flex items-center">
-            Mensajería <span className="ml-2 bg-[#00FF88] text-black text-[10px] px-1.5 py-0.5 rounded-full">{conversations.length}</span>
+      <div className="w-[340px] bg-white border-r border-slate-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center">
+            Mensajería <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{conversations.length}</span>
           </h2>
           <div className="flex space-x-2 text-slate-400">
             <button className="hover:text-slate-600"><Settings className="w-5 h-5" /></button>
           </div>
         </div>
 
-        <div className="p-3 border-b border-white/5">
-          <div className="bg-white/5 rounded-lg flex items-center px-3 py-2 border border-white/10 focus-within:ring-1 focus-within:ring-[#00FF88] focus-within:border-[#00FF88] transition-all">
-            <Search className="w-4 h-4 text-[#9CA3AF] mr-2 shrink-0" />
+        <div className="p-3 border-b border-slate-100">
+          <div className="bg-slate-100 rounded-lg flex items-center px-3 py-2 border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400">
+            <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
             <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar conversación..." className="bg-transparent border-none outline-none text-[13px] w-full text-white" />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <p className="text-center text-xs text-[#9CA3AF] p-4">Cargando...</p>
+            <p className="text-center text-xs text-slate-400 p-4">Cargando...</p>
           ) : conversations.length === 0 ? (
-            <p className="text-center text-xs text-[#9CA3AF] p-4">Sin mensajes en DB</p>
+            <p className="text-center text-xs text-slate-400 p-4">Sin mensajes en DB</p>
           ) : (
             conversations.map((c: any) => {
               const isActive = activeContact === c.phone;
@@ -1077,21 +1077,21 @@ function Messenger() {
                 <div 
                   key={c.phone} 
                   onClick={() => setActiveContact(c.phone)}
-                  className={`flex items-start p-3 cursor-pointer border-b border-white/5 transition-colors ${isActive ? 'bg-white/5 border-l-2 border-l-[#00FF88]' : 'hover:bg-white/5'}`}
+                  className={`flex items-start p-3 cursor-pointer border-b border-slate-50 transition-colors ${isActive ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
                 >
                   <img src="/images.png" alt="Cliente" className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm mr-3 border border-slate-200" />
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
-                      <h4 className={`text-[14px] font-bold truncate ${isActive ? 'text-white' : 'text-[#9CA3AF]'}`}>{c.name}</h4>
-                      <span className="text-[10px] text-[#9CA3AF] font-medium">
+                      <h4 className={`text-[14px] font-bold truncate ${isActive ? 'text-blue-800' : 'text-slate-800'}`}>{c.name}</h4>
+                      <span className="text-[10px] text-slate-400 font-medium">
                         {new Date(c.lastMessage.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    <p className={`text-[12px] truncate ${isActive ? 'text-[#00FF88] font-medium' : 'text-[#9CA3AF]'}`}>
+                    <p className={`text-[12px] truncate ${isActive ? 'text-blue-600 font-medium' : 'text-slate-500'}`}>
                       {c.lastMessage.message_type === 'media' ? '📷 Imagen/Audio adjunto' : c.lastMessage.body}
                     </p>
                     <div className="mt-1">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-[#00FF88]/20 text-[#00FF88] text-[9px] font-bold uppercase tracking-wider">Business</span>
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[9px] font-bold uppercase tracking-wider">Business</span>
                     </div>
                   </div>
                 </div>
@@ -1101,13 +1101,13 @@ function Messenger() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-black relative">
+      <div className="flex-1 flex flex-col bg-[#E5EAEF] relative">
         <div className="absolute inset-0 z-0 opacity-40 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(30,58,138,0.2) 0%, rgba(6,95,70,0.15) 100%)' }}></div>
 
         {activeContact ? (
           <>
             {/* Chat Topbar */}
-            <div className="h-16 bg-black/80 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-6 z-10 shrink-0 shadow-sm relative flex items-center justify-between px-6 z-10 shrink-0 shadow-sm relative">
+            <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-10 shrink-0 shadow-sm relative">
               <div className="flex items-center">
                 <img src="/images.png" alt="Avatar Cliente" className="w-10 h-10 rounded-full object-cover shadow-sm mr-3 border border-slate-200" />
                 <div>
@@ -1119,20 +1119,20 @@ function Messenger() {
                          autoFocus
                          value={editClientName}
                          onChange={(e) => setEditClientName(e.target.value)}
-                         className="text-[14px] font-bold text-white border-b border-[#00FF88] focus:outline-none bg-transparent px-1 py-0.5 rounded-sm"
+                         className="text-[14px] font-bold text-slate-800 border-b border-blue-400 focus:outline-none bg-slate-50 px-1 py-0.5 rounded-sm"
                          onKeyDown={(e) => { if(e.key === 'Enter') handleSaveClientName(); if(e.key === 'Escape') setIsEditingClient(false); }}
                        />
                        <button onClick={handleSaveClientName} className="text-green-600 bg-green-50 p-1 rounded-md hover:bg-green-100"><Check className="w-4 h-4" /></button>
                        <button onClick={() => setIsEditingClient(false)} className="text-slate-400 bg-slate-50 p-1 rounded-md hover:bg-slate-100">X</button>
                     </div>
                   ) : (
-                    <h3 className="text-[15px] font-bold text-white flex items-center group">
+                    <h3 className="text-[15px] font-bold text-slate-800 flex items-center group">
                       {(() => {
                          const rawName = activeContactInfo?.name || '';
                          if (!rawName) return 'Cliente Nuevo';
                          return rawName.match(/^\d+$/) ? `Cliente ${rawName.substring(rawName.length - 4)}` : rawName;
                       })()}
-                      <span className="text-[#9CA3AF] ml-2 font-normal text-xs bg-white/5 border border-white/10 px-1.5 py-0.5 rounded">{activeContact}</span>
+                      <span className="text-slate-400 ml-2 font-normal text-xs bg-slate-100 px-1.5 py-0.5 rounded">{activeContact}</span>
                       <button 
                         onClick={() => {
                           setEditClientName(activeContactInfo?.name || activeContact);
@@ -1144,7 +1144,7 @@ function Messenger() {
                     </h3>
                   )}
 
-                  <div className="flex items-center text-[11px] text-[#00D1FF] font-medium">
+                  <div className="flex items-center text-[11px] text-blue-500 font-medium">
                     <MessageSquare className="w-3 h-3 mr-1" /> WhatsApp Integrado {activeContactInfo?.lastInvoice ? '• Factura Vinculada' : ''}
                   </div>
                 </div>
@@ -1165,13 +1165,13 @@ function Messenger() {
                        showSystemModal('Error IA', 'Error al resumir conversación de IA. Revisa edge function. Detalles: ' + err.message, 'error');
                     }
                   }}
-                  className="bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-300 px-4 py-1.5 rounded-full text-[12px] font-bold shadow-sm transition-colors flex items-center border border-indigo-500/30"
+                  className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-4 py-1.5 rounded-full text-[12px] font-bold shadow-sm transition-colors flex items-center border border-purple-200"
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                   Resumir con IA
                 </button>
 
-                <div className="bg-white/5 px-4 py-1.5 rounded-full text-[11px] font-bold text-[#9CA3AF] shadow-sm border border-white/10">
+                <div className="bg-slate-100/80 px-4 py-1.5 rounded-full text-[11px] font-bold text-slate-500 shadow-sm border border-slate-200">
                   {new Intl.DateTimeFormat('es-AR', { weekday:'long', day:'2-digit', month:'long', year:'numeric'}).format(new Date())}
                 </div>
               </div>
@@ -1231,7 +1231,7 @@ function Messenger() {
                           ))}
                         </div>
                         <div className="flex gap-1.5">
-                          <button onClick={() => { setShowAddTemplate(false); setEditingTemplate(null); }} className="text-[11px] text-[#9CA3AF] hover:text-white px-2 py-1 transition-colors">Cancelar</button>
+                          <button onClick={() => { setShowAddTemplate(false); setEditingTemplate(null); }} className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 transition-colors">Cancelar</button>
                           <button onClick={async () => {
                             const tpl = { shortcut: tplForm.shortcut.startsWith('/') ? tplForm.shortcut.toUpperCase() : `/${tplForm.shortcut.toUpperCase()}`, body: tplForm.body, category: tplForm.category };
                             if (editingTemplate) {
@@ -1273,7 +1273,7 @@ function Messenger() {
                       </div>
                     ))}
                     {filteredTemplates.length === 0 && !showAddTemplate && (
-                      <div className="p-4 text-center text-sm text-[#9CA3AF] font-medium">
+                      <div className="p-4 text-center text-sm text-slate-400 font-medium">
                         No hay plantillas. <button onClick={() => setShowAddTemplate(true)} className="text-blue-500 hover:underline">Crear la primera</button>
                       </div>
                     )}
@@ -1281,11 +1281,11 @@ function Messenger() {
                 </div>
               )}
 
-              <div className="bg-black/90 backdrop-blur-xl p-4 shrink-0 flex items-center shadow-lg border-t border-white/10 relative">
+              <div className="bg-white p-4 shrink-0 flex items-center shadow-[0_-2px_10px_-4px_rgba(0,0,0,0.05)] border-t border-slate-200 relative">
                 {is24hExpired && (
-                  <div className="absolute top-0 left-0 right-0 -translate-y-full bg-[#1A1A1A] border-y border-[#FACC15]/30 px-6 py-2.5 flex items-center justify-center shadow-lg">
-                    <AlertTriangle className="w-4 h-4 text-[#FACC15] mr-2" />
-                    <span className="text-[12px] font-bold text-[#FACC15]">Sesión expirada (+24hs). DEBES iniciar con una Plantilla oficial (usa "/")</span>
+                  <div className="absolute top-0 left-0 right-0 -translate-y-full bg-amber-100 border-y border-amber-300 px-6 py-2.5 flex items-center justify-center shadow-md z-30">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
+                    <span className="text-[12px] font-bold text-amber-800">Sesión expirada (+24hs). DEBES iniciar con una Plantilla oficial (usa "/")</span>
                   </div>
                 )}
                 
@@ -1305,8 +1305,8 @@ function Messenger() {
                     placeholder={is24hExpired ? "Escribe '/' para elegir plantilla..." : "Escribe '/' para plantillas o simplemente un mensaje..."} 
                     className={`w-full border rounded-full px-5 py-3 text-[14px] focus:outline-none transition-all shadow-inner 
                       ${is24hExpired 
-                        ? 'bg-[#FACC15]/5 border-[#FACC15]/30 text-[#FACC15] focus:bg-[#FACC15]/10 focus:border-[#FACC15] placeholder:text-[#FACC15]/50' 
-                        : 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-[#00FF88]'}`}
+                        ? 'bg-amber-50 border-amber-300 text-amber-900 focus:bg-amber-100 focus:border-amber-500 placeholder:text-amber-500/70' 
+                        : 'bg-slate-100 border-transparent text-slate-800 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10'}`}
                   />
                 </form>
 
@@ -1314,7 +1314,7 @@ function Messenger() {
                   onClick={handleSendMessage}
                   disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/'))}
                   className={`w-12 h-12 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all shadow-md ml-2
-                    ${is24hExpired ? 'bg-[#FACC15] hover:bg-[#EAB308] text-black' : 'bg-[#00FF88] hover:bg-[#00E57A]'}
+                    ${is24hExpired ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-500 hover:bg-green-600'}
                   `}
                 >
                   <div style={{transform: "rotate(45deg) translate(-2px, 2px)"}}><Upload className="w-5 h-5" /></div>
@@ -1491,7 +1491,7 @@ function FollowUps() {
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
       'pending': 'bg-amber-100 text-amber-700',
-      'completed': 'bg-[#00FF88]/20 text-[#00FF88]',
+      'completed': 'bg-green-100 text-green-700',
       'cancelled': 'bg-red-100 text-red-700'
     };
     const labels: Record<string, string> = { 'pending': 'Pendiente', 'completed': 'Completado', 'cancelled': 'Cancelado' };
@@ -1669,7 +1669,7 @@ function FollowUps() {
                   </button>
                   {showTplPicker && (
                     <div className="absolute right-0 top-10 bg-white rounded-xl shadow-2xl border border-slate-200 w-[300px] max-h-[280px] overflow-y-auto z-50">
-                      <div className="p-3 border-b border-white/5">
+                      <div className="p-3 border-b border-slate-100">
                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Seleccioná una plantilla</p>
                       </div>
                       {templates.length === 0 ? (
@@ -1910,7 +1910,7 @@ function Clients() {
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  {client.ai_summary && <span className="text-[9px] bg-[#00FF88]/20 text-[#00FF88] px-2 py-0.5 rounded font-bold">IA</span>}
+                  {client.ai_summary && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold">IA</span>}
                   <Eye className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
                 </div>
               </div>
@@ -2054,7 +2054,7 @@ function Clients() {
                     {fu.observations && <p className="text-[11px] text-slate-400 italic truncate">{fu.observations}</p>}
                   </div>
                   <span className="text-[11px] text-slate-400 flex-shrink-0">{new Date(fu.scheduled_date).toLocaleDateString('es-AR')}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${fu.status === 'pending' ? 'bg-amber-100 text-amber-700' : fu.status === 'completed' ? 'bg-[#00FF88]/20 text-[#00FF88]' : 'bg-red-100 text-red-700'}`}>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${fu.status === 'pending' ? 'bg-amber-100 text-amber-700' : fu.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {fu.status === 'pending' ? 'Pendiente' : fu.status === 'completed' ? 'Completado' : 'Cancelado'}
                   </span>
                 </div>
@@ -2242,7 +2242,7 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                 Los usuarios (Vendedores/Admins) se dan de alta directamente a través del panel de Supabase Auth para mantener la integridad criptográfica de las contraseñas.
               </p>
               <div className="mt-8 flex justify-center">
-                <a href="https://supabase.com/dashboard/project/_/auth/users" target="_blank" rel="noreferrer" className="bg-[#00FF88] text-black px-6 py-3 rounded-full text-[14px] font-bold hover:bg-[#00E67A] transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(0,255,136,0.4)]">
+                <a href="https://supabase.com/dashboard/project/_/auth/users" target="_blank" rel="noreferrer" className="bg-red-500 text-white px-6 py-3 rounded-full text-[14px] font-bold hover:bg-[#00E67A] transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(0,255,136,0.4)]">
                   Ir a Supabase Auth <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
