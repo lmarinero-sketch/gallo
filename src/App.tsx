@@ -751,6 +751,11 @@ function Messenger() {
   const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 1500;
+  
   const [activeContact, setActiveContact] = useState<string | null>(null);
   const [activeContactInfo, setActiveContactInfo] = useState<any>(null);
   const [activeClientsMap, setActiveClientsMap] = useState<Record<string, string>>({});
@@ -848,47 +853,59 @@ function Messenger() {
     }
   };
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (isLoadMore = false) => {
     try {
-      setLoading(true);
+      if (isLoadMore) setLoadingMore(true);
+      else setLoading(true);
+
+      const targetPage = isLoadMore ? page + 1 : 0;
+      const _from = targetPage * PAGE_SIZE;
+      const _to = _from + PAGE_SIZE - 1;
+
       const { data, error } = await supabase
         .from('ng_whatsapp_messages')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(5000);
+        .range(_from, _to);
         
       if (error) throw error;
-      setMessages(data || []);
       
-      const { data: cData } = await supabase.from('ng_clients').select('*');
-      const clientsMap: Record<string, string> = {};
-      if (cData) {
-        cData.forEach(c => { clientsMap[c.phone] = c.name; });
+      const newMessages = data || [];
+      if (newMessages.length < PAGE_SIZE) {
+        setHasMore(false);
+      } else if (!isLoadMore) {
+        setHasMore(true);
       }
+      
+      const combinedMessages = isLoadMore ? [...messages, ...newMessages] : newMessages;
+      setMessages(combinedMessages);
+      setPage(targetPage);
+      
+      if (!isLoadMore) {
+        const { data: cData } = await supabase.from('ng_clients').select('*');
+        const clientsMap: Record<string, string> = {};
+        if (cData) {
+          cData.forEach(c => { clientsMap[c.phone] = c.name; });
+        }
+        setActiveClientsMap(clientsMap);
 
-      if (data && data.length > 0) {
-        const conversationsRaw = Array.from(new Set(data.map(m => m.client_phone))).map(phone => {
-          const contactMessages = data.filter(m => m.client_phone === phone);
-          return {
-            phone,
-            name: clientsMap[phone as string] || phone,
-            lastMessage: contactMessages[0],
-            total: contactMessages.length
-          };
-        });
-        
-        // Pass to state if we want, but for now we just compute it inline below, wait we should store clientsMap in state!
-      }
-      setActiveClientsMap(clientsMap);
-
-      if (data && data.length > 0) {
-        const firstContact = Array.from(new Set(data.map(m => m.client_phone)))[0];
-        setActiveContact(firstContact as string);
+        if (newMessages.length > 0) {
+          const firstContact = Array.from(new Set(newMessages.map(m => m.client_phone)))[0];
+          setActiveContact(firstContact as string);
+        }
       }
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isLoadMore) setLoadingMore(false);
+      else setLoading(false);
+    }
+  };
+
+  const handleScrollSidebar = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight + 100 && !loadingMore && hasMore) {
+      fetchMessages(true);
     }
   };
 
@@ -1065,7 +1082,7 @@ function Messenger() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={handleScrollSidebar}>
           {loading ? (
             <p className="text-center text-xs text-slate-400 p-4">Cargando...</p>
           ) : conversations.length === 0 ? (
@@ -1097,6 +1114,12 @@ function Messenger() {
                 </div>
               )
             })
+          )}
+          {loadingMore && (
+            <div className="p-4 flex justify-center items-center">
+              <RefreshCw className="w-4 h-4 text-slate-400 animate-spin mr-2" />
+              <span className="text-xs text-slate-500 font-bold">Cargando chats más antiguos...</span>
+            </div>
           )}
         </div>
       </div>
