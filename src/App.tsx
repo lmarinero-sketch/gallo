@@ -42,7 +42,11 @@ import {
   Plus,
   Trash2,
   X,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Paperclip,
+  Image as ImageIcon,
+  FileText,
+  Mic
 } from 'lucide-react';
 
 export type ModalType = 'error' | 'success' | 'info';
@@ -766,7 +770,9 @@ function Messenger() {
   const [activeClientsMap, setActiveClientsMap] = useState<Record<string, string>>({});
   const [newMessage, setNewMessage] = useState("");
   const [showWaPicker, setShowWaPicker] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   
   // Edición
   const [isEditingClient, setIsEditingClient] = useState(false);
@@ -1940,17 +1946,51 @@ function Messenger() {
                   </div>
                 )}
                 
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setShowWaPicker(!showWaPicker);
-                    if (!waTemplates.length) fetchWaTemplates();
-                  }}
-                  className="w-12 h-12 flex-shrink-0 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-full flex items-center justify-center transition-all bg-slate-50 border border-slate-200 shadow-sm"
-                  title="Plantillas Oficiales (Meta)"
-                >
-                  <MessageSquarePlus className="w-5 h-5" />
-                </button>
+                <div className="relative">
+                  <button 
+                    type="button"
+                    onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                    className="w-12 h-12 flex-shrink-0 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-full flex items-center justify-center transition-all bg-slate-50 border border-slate-200 shadow-sm"
+                    title="Adjuntar / Plantillas"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+
+                  {/* Menú de Adjuntos */}
+                  {showAttachmentMenu && (
+                    <div className="absolute bottom-full left-0 mb-2 w-[220px] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
+                      <div className="p-1.5 flex flex-col gap-1">
+                        <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><ImageIcon className="w-4 h-4" /></div>
+                          <div className="text-left"><p className="text-[13px] font-bold">Fotos y Videos</p></div>
+                        </button>
+                        <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600"><FileText className="w-4 h-4" /></div>
+                          <div className="text-left"><p className="text-[13px] font-bold">Documento</p></div>
+                        </button>
+                        <button onClick={() => { alert("Nota de voz en desarrollo..."); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600"><Mic className="w-4 h-4" /></div>
+                          <div className="text-left"><p className="text-[13px] font-bold">Audio</p></div>
+                        </button>
+                        <div className="h-[1px] bg-slate-100 my-1"></div>
+                        <button onClick={() => { setShowWaPicker(true); setShowAttachmentMenu(false); if (!waTemplates.length) { fetchWaTemplates(); } }} className="flex items-center gap-3 w-full p-2.5 hover:bg-green-50 rounded-lg text-slate-700 transition-colors group">
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform"><MessageSquarePlus className="w-4 h-4" /></div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-bold text-green-800">Plantilla de Meta</p>
+                            <p className="text-[10px] text-green-600">(Con Costo)</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*,.pdf,.doc,.docx" onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if(f) {
+                      showSystemModal("Adjunto no soportado", "El envío de multimedia desde el CRM requiere configurar el bucket del proveedor en el próximo módulo.", "info");
+                    }
+                  }} />
+                </div>
 
                 {showWaPicker && (
                   <div className="absolute bottom-full left-4 w-[400px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
