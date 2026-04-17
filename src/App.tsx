@@ -37,7 +37,10 @@ import {
   RefreshCw,
   Phone,
   ShoppingCart,
-  Eye
+  Eye,
+  Plus,
+  Trash2,
+  X
 } from 'lucide-react';
 
 export type ModalType = 'error' | 'success' | 'info';
@@ -796,6 +799,77 @@ function Messenger() {
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
   const [tplForm, setTplForm] = useState({ shortcut: '/', body: '', category: 'General' });
 
+  // Settings Modal
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'templates' | 'blacklist' | 'wa-templates' | 'general'>('templates');
+  const [blacklist, setBlacklist] = useState<any[]>([]);
+  const [blacklistInput, setBlacklistInput] = useState('');
+  const [blacklistLoading, setBlacklistLoading] = useState(false);
+  const [waTemplates, setWaTemplates] = useState<any[]>([]);
+  const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
+
+  const BB_URL = import.meta.env.VITE_BUILDERBOT_API_URL;
+  const BB_KEY = import.meta.env.VITE_BUILDERBOT_API_KEY;
+  const BB_BOT_ID = import.meta.env.VITE_BUILDERBOT_BOT_ID;
+
+  const fetchBlacklist = async () => {
+    setBlacklistLoading(true);
+    try {
+      const res = await fetch(`${BB_URL}/${BB_BOT_ID}/blacklist`, {
+        headers: { 'x-api-builderbot': BB_KEY }
+      });
+      const data = await res.json();
+      setBlacklist(Array.isArray(data) ? data : data?.blacklist || data?.numbers || []);
+    } catch (e) { console.error('Error fetching blacklist:', e); }
+    setBlacklistLoading(false);
+  };
+
+  const addToBlacklist = async () => {
+    if (!blacklistInput.trim()) return;
+    try {
+      await fetch(`${BB_URL}/${BB_BOT_ID}/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-builderbot': BB_KEY },
+        body: JSON.stringify({ number: blacklistInput.trim(), intent: 'add' })
+      });
+      setBlacklist(prev => [...prev, blacklistInput.trim()]);
+      setBlacklistInput('');
+      showSystemModal('Blacklist', `Número ${blacklistInput} agregado. El bot no le responderá.`, 'success');
+    } catch (e) { console.error(e); }
+  };
+
+  const removeFromBlacklist = async (number: string) => {
+    try {
+      await fetch(`${BB_URL}/${BB_BOT_ID}/blacklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-builderbot': BB_KEY },
+        body: JSON.stringify({ number, intent: 'remove' })
+      });
+      setBlacklist(prev => prev.filter(n => n !== number));
+      showSystemModal('Blacklist', `Número ${number} removido. El bot volverá a responderle.`, 'success');
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchWaTemplates = async () => {
+    setWaTemplatesLoading(true);
+    try {
+      const res = await fetch(`${BB_URL}/${BB_BOT_ID}/whatsapp-template?limit=50`, {
+        headers: { 'x-api-builderbot': BB_KEY }
+      });
+      const data = await res.json();
+      setWaTemplates(Array.isArray(data) ? data : data?.templates || data?.data || []);
+    } catch (e) { console.error('Error fetching WA templates:', e); }
+    setWaTemplatesLoading(false);
+  };
+
+  const openSettings = (tab: 'templates' | 'blacklist' | 'wa-templates' | 'general' = 'templates') => {
+    setSettingsTab(tab);
+    setShowSettings(true);
+    if (tab === 'blacklist') fetchBlacklist();
+    if (tab === 'wa-templates') fetchWaTemplates();
+  };
+
+
   useEffect(() => {
     fetchMessages();
     fetchTemplates();
@@ -1106,7 +1180,7 @@ function Messenger() {
             Mensajería <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{conversations.length}</span>
           </h2>
           <div className="flex space-x-2 text-slate-400">
-            <button className="hover:text-slate-600"><Settings className="w-5 h-5" /></button>
+            <button onClick={() => openSettings()} className="hover:text-blue-600 transition-colors"><Settings className="w-5 h-5" /></button>
           </div>
         </div>
 
@@ -1158,6 +1232,289 @@ function Messenger() {
           )}
         </div>
       </div>
+
+      {/* ═══ SETTINGS MODAL ═══ */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowSettings(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[720px] max-h-[85vh] flex flex-col overflow-hidden border border-slate-200" onClick={e => e.stopPropagation()}>
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+              <h2 className="text-[16px] font-bold text-slate-800 flex items-center">
+                <Settings className="w-5 h-5 mr-2 text-blue-600" /> Configuración de Mensajería
+              </h2>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 px-6 bg-white">
+              {[
+                { key: 'templates', label: '📋 Plantillas Rápidas' },
+                { key: 'blacklist', label: '🚫 Blacklist Bot' },
+                { key: 'wa-templates', label: '📱 Plantillas WhatsApp' },
+                { key: 'general', label: '⚙️ General' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    setSettingsTab(tab.key as any);
+                    if (tab.key === 'blacklist') fetchBlacklist();
+                    if (tab.key === 'wa-templates') fetchWaTemplates();
+                  }}
+                  className={`px-4 py-3 text-[12px] font-bold border-b-2 transition-colors ${
+                    settingsTab === tab.key 
+                      ? 'border-blue-500 text-blue-600' 
+                      : 'border-transparent text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+
+              {/* ── TAB: Plantillas Rápidas ── */}
+              {settingsTab === 'templates' && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-[14px] font-bold text-slate-800">Atajos de Plantillas</h3>
+                      <p className="text-[12px] text-slate-400 mt-0.5">Escribí "/" en el chat para usarlas rápidamente</p>
+                    </div>
+                    <button 
+                      onClick={() => { setShowAddTemplate(!showAddTemplate); setEditingTemplate(null); setTplForm({ shortcut: '/', body: '', category: 'General' }); }}
+                      className="bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-bold px-3 py-2 rounded-lg transition-colors flex items-center"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Nueva Plantilla
+                    </button>
+                  </div>
+
+                  {showAddTemplate && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 space-y-3">
+                      <div className="flex gap-2">
+                        <input type="text" value={tplForm.shortcut} onChange={e => setTplForm({...tplForm, shortcut: e.target.value})} placeholder="/ATAJO" className="w-[120px] border border-slate-200 rounded-lg px-3 py-2 text-[12px] font-bold focus:border-blue-400 focus:outline-none bg-white" />
+                        <select value={tplForm.category} onChange={e => setTplForm({...tplForm, category: e.target.value})} className="border border-slate-200 rounded-lg px-3 py-2 text-[12px] bg-white focus:border-blue-400 focus:outline-none">
+                          <option>General</option><option>Seguimiento</option><option>Ventas</option><option>Soporte</option>
+                        </select>
+                      </div>
+                      <textarea value={tplForm.body} onChange={e => setTplForm({...tplForm, body: e.target.value})} placeholder="Texto de la plantilla... usa {{nombre}}, {{productos}}, {{importe}}" rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[12px] focus:border-blue-400 focus:outline-none bg-white resize-none" />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => { setShowAddTemplate(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600 text-[11px] font-bold px-3 py-1.5 rounded-lg">Cancelar</button>
+                        <button onClick={async () => {
+                          const tpl = { shortcut: tplForm.shortcut, body: tplForm.body, category: tplForm.category };
+                          if (editingTemplate) {
+                            await supabase.from('ng_templates').update(tpl).eq('id', editingTemplate.id);
+                          } else {
+                            await supabase.from('ng_templates').insert([tpl]);
+                          }
+                          fetchTemplates();
+                          setShowAddTemplate(false);
+                          setEditingTemplate(null);
+                          setTplForm({ shortcut: '/', body: '', category: 'General' });
+                        }} disabled={!tplForm.body.trim() || !tplForm.shortcut.trim()} className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-[11px] font-bold px-4 py-1.5 rounded-lg transition-colors">
+                          {editingTemplate ? 'Actualizar' : 'Guardar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {templates.map((t, idx) => (
+                      <div key={t.id || idx} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 transition-colors group">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-bold text-blue-600">{t.shortcut}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{t.category}</span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => { setEditingTemplate(t); setTplForm({ shortcut: t.shortcut, body: t.body, category: t.category }); setShowAddTemplate(true); }} className="text-blue-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50"><Edit2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={async () => { await supabase.from('ng_templates').delete().eq('id', t.id); fetchTemplates(); }} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                        <p className="text-[12px] text-slate-500 leading-relaxed">{t.body}</p>
+                      </div>
+                    ))}
+                    {templates.length === 0 && (
+                      <div className="text-center py-8 text-slate-400">
+                        <p className="text-[13px] font-medium">No hay plantillas creadas aún</p>
+                        <p className="text-[11px] mt-1">Crea tu primera plantilla para agilizar tus respuestas</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── TAB: Blacklist ── */}
+              {settingsTab === 'blacklist' && (
+                <div>
+                  <div className="mb-4">
+                    <h3 className="text-[14px] font-bold text-slate-800">Lista Negra del Bot</h3>
+                    <p className="text-[12px] text-slate-400 mt-0.5">El bot no responderá automáticamente a estos números. Útil para proveedores, familiares o números internos.</p>
+                  </div>
+
+                  <div className="flex gap-2 mb-5">
+                    <input 
+                      type="text" 
+                      value={blacklistInput} 
+                      onChange={e => setBlacklistInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addToBlacklist()}
+                      placeholder="Ej: 5491133775246" 
+                      className="flex-1 border border-slate-200 rounded-lg px-4 py-2.5 text-[13px] focus:border-blue-400 focus:outline-none bg-white"
+                    />
+                    <button onClick={addToBlacklist} className="bg-red-500 hover:bg-red-600 text-white text-[11px] font-bold px-4 py-2.5 rounded-lg transition-colors flex items-center shrink-0">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Bloquear
+                    </button>
+                  </div>
+
+                  {blacklistLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-4 h-4 text-slate-400 animate-spin mr-2" />
+                      <span className="text-[12px] text-slate-400">Cargando blacklist...</span>
+                    </div>
+                  ) : blacklist.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[13px] font-medium">🤖 Sin números bloqueados</p>
+                      <p className="text-[11px] mt-1">El bot responde a todos los números por ahora</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {blacklist.map((num, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3 hover:border-red-200 transition-colors group">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center mr-3">
+                              <span className="text-red-500 text-[11px] font-bold">🚫</span>
+                            </div>
+                            <div>
+                              <span className="text-[13px] font-bold text-slate-700">{typeof num === 'string' ? num : num.number || JSON.stringify(num)}</span>
+                              <p className="text-[10px] text-slate-400">Bot desactivado</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => removeFromBlacklist(typeof num === 'string' ? num : num.number)} 
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-all"
+                          >
+                            Desbloquear
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── TAB: Plantillas WhatsApp (Meta) ── */}
+              {settingsTab === 'wa-templates' && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-[14px] font-bold text-slate-800">Plantillas Oficiales WhatsApp</h3>
+                      <p className="text-[12px] text-slate-400 mt-0.5">Templates aprobados por Meta para iniciar conversaciones después de 24hs</p>
+                    </div>
+                    <button onClick={fetchWaTemplates} className="text-blue-500 hover:text-blue-700 text-[11px] font-bold flex items-center">
+                      <RefreshCw className="w-3.5 h-3.5 mr-1" /> Actualizar
+                    </button>
+                  </div>
+
+                  {waTemplatesLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-4 h-4 text-slate-400 animate-spin mr-2" />
+                      <span className="text-[12px] text-slate-400">Cargando templates de Meta...</span>
+                    </div>
+                  ) : waTemplates.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[13px] font-medium">Sin plantillas de WhatsApp</p>
+                      <p className="text-[11px] mt-1">Configurá tus templates desde el panel de Meta Business</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {waTemplates.map((wt: any, idx: number) => (
+                        <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-green-300 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[13px] font-bold text-green-700">{wt.name || wt.templateName || `Template ${idx+1}`}</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              (wt.status || '').toLowerCase() === 'approved' 
+                                ? 'bg-green-100 text-green-600 border border-green-200'
+                                : 'bg-amber-50 text-amber-600 border border-amber-200'
+                            }`}>{wt.status || 'N/A'}</span>
+                          </div>
+                          <p className="text-[12px] text-slate-500">{wt.body || wt.text || (wt.components && wt.components[0]?.text) || 'Sin preview'}</p>
+                          {wt.language && <span className="text-[10px] text-slate-300 mt-1 inline-block">Idioma: {wt.language}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── TAB: General ── */}
+              {settingsTab === 'general' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-[14px] font-bold text-slate-800 mb-1">Información del Bot</h3>
+                    <p className="text-[12px] text-slate-400 mb-3">Datos de conexión con BuilderBot Cloud</p>
+                    <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-2">
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-slate-400 font-medium">Bot ID:</span>
+                        <span className="text-slate-600 font-mono text-[11px]">{BB_BOT_ID || 'No configurado'}</span>
+                      </div>
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-slate-400 font-medium">API URL:</span>
+                        <span className="text-slate-600 font-mono text-[11px] truncate max-w-[300px]">{BB_URL || 'No configurado'}</span>
+                      </div>
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-slate-400 font-medium">API Key:</span>
+                        <span className="text-slate-600 font-mono text-[11px]">{BB_KEY ? '••••••' + BB_KEY.slice(-8) : 'No configurado'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-[14px] font-bold text-slate-800 mb-1">Webhook URL</h3>
+                    <p className="text-[12px] text-slate-400 mb-3">URL que debe estar configurada en BuilderBot → Webhooks</p>
+                    <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+                      <code className="text-[11px] text-blue-700 font-mono break-all select-all">
+                        https://pxvhovctyewwppwkldaq.supabase.co/functions/v1/builderbot-webhook
+                      </code>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-[14px] font-bold text-slate-800 mb-1">Regla de 24 Horas</h3>
+                    <p className="text-[12px] text-slate-400 mb-3">WhatsApp requiere usar plantillas oficiales para contactar clientes después de 24hs sin interacción</p>
+                    <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 flex items-start">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 mr-3 mt-0.5 shrink-0" />
+                      <p className="text-[12px] text-amber-700">El sistema detecta automáticamente sesiones expiradas y obliga el uso de plantillas oficiales para cumplir con las políticas de Meta.</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-[14px] font-bold text-slate-800 mb-1">Estadísticas Rápidas</h3>
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                        <p className="text-[22px] font-bold text-blue-600">{conversations.length}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Conversaciones</p>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                        <p className="text-[22px] font-bold text-green-600">{messages.length}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mensajes</p>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+                        <p className="text-[22px] font-bold text-purple-600">{templates.length}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plantillas</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col bg-[#E5EAEF] relative">
         <div className="absolute inset-0 z-0 opacity-40 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(30,58,138,0.2) 0%, rgba(6,95,70,0.15) 100%)' }}></div>
