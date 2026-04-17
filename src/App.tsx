@@ -1658,7 +1658,15 @@ function Messenger() {
                           <p className="text-[12px] text-slate-400 mt-0.5">Bot con inteligencia artificial que responde automáticamente vía GPT</p>
                         </div>
                         <button 
-                          onClick={() => setBotEnabled(!botEnabled)}
+                          onClick={async () => {
+                            const newState = !botEnabled;
+                            setBotEnabled(newState);
+                            try {
+                              await supabase.from('ng_bot_config').upsert({ key: 'bot_enabled', value: newState ? 'true' : 'false' }, { onConflict: 'key' });
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
                           className={`relative w-12 h-6 rounded-full transition-colors ${botEnabled ? 'bg-green-500' : 'bg-slate-300'}`}
                         >
                           <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${botEnabled ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
