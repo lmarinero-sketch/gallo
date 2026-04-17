@@ -45,7 +45,6 @@ import {
   MessageSquarePlus,
   Paperclip,
   Image as ImageIcon,
-  FileText,
   Mic
 } from 'lucide-react';
 
@@ -1158,6 +1157,19 @@ function Messenger() {
     
     setNewMessage(newText);
     setShowTemplates(false);
+  };
+
+  const applyOfficialTemplate = (t: any) => {
+    let textBody = '';
+    const bodyComponent = t.components?.find((c: any) => c.type === 'BODY');
+    if (bodyComponent && bodyComponent.text) {
+      textBody = bodyComponent.text;
+    }
+    
+    showSystemModal("Costo por mensaje", "ATENCIÓN: El uso de las plantillas oficiales de Meta generará un cargo económico según la tarifa vigente de WhatsApp Business.\n\nÚsala UNA SOLA VEZ para que el cliente responda. Una vez que el cliente responde, la ventana de 24hs se abre y los mensajes son gratuitos.", "info");
+    
+    setNewMessage(textBody);
+    setShowWaPicker(false);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
