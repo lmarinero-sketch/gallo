@@ -161,16 +161,51 @@ serve(async (req) => {
             content: m.body || ''
           }));
 
-          // ── Buscar productos relevantes en la BD si existe una tabla de precios ──
+          // ── Buscar productos relevantes en la BD ──
           let productContext = '';
-          // Intentar buscar por medida si el mensaje contiene un patrón tipo "195/55 R16"
+          
+          // Buscar por medida si el mensaje contiene un patrón tipo "195/55 R16"
           const measureMatch = body.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
+          // Buscar por marca
+          const brandKeywords = ['michelin', 'bridgestone', 'continental', 'pirelli', 'dunlop', 'goodyear', 'yokohama', 'hankook', 'nexen', 'fate', 'firestone', 'westlake', 'linglong', 'giti', 'kumho', 'falken', 'laufenn', 'bfgoodrich', 'chaoyang', 'windforce', 'firemax', 'triangle'];
+          const bodyLower = body.toLowerCase();
+          const mentionedBrand = brandKeywords.find(b => bodyLower.includes(b));
+
           if (measureMatch) {
-            const searchTerm = measureMatch[1].replace(/\s/g, '');
-            console.log(`Buscando productos con medida: ${searchTerm}`);
+            const searchMeasure = measureMatch[1].replace(/\s/g, '');
+            console.log(`Buscando productos con medida: ${searchMeasure}`);
             
-            // Buscar en ng_whatsapp_messages no, buscar en catálogo si existe
-            // Por ahora el catálogo está en el system prompt
+            const { data: products } = await supabase
+              .from('ng_products')
+              .select('name, brand, measure, price, stock')
+              .ilike('measure', `%${searchMeasure}%`)
+              .gt('stock', 0)
+              .order('price', { ascending: true });
+
+            if (products && products.length > 0) {
+              productContext = `\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ${searchMeasure}\n`;
+              products.forEach((p: any) => {
+                productContext += `- ${p.name} → Precio Lista: $${p.price.toLocaleString()} | Stock: ${p.stock} unidades\n`;
+              });
+              console.log(`Encontrados ${products.length} productos para medida ${searchMeasure}`);
+            }
+          } else if (mentionedBrand) {
+            console.log(`Buscando productos de marca: ${mentionedBrand}`);
+            const { data: products } = await supabase
+              .from('ng_products')
+              .select('name, brand, measure, price, stock')
+              .ilike('brand', `%${mentionedBrand}%`)
+              .gt('stock', 0)
+              .order('price', { ascending: true })
+              .limit(15);
+
+            if (products && products.length > 0) {
+              productContext = `\n\n# PRODUCTOS DISPONIBLES DE ${mentionedBrand.toUpperCase()}\n`;
+              products.forEach((p: any) => {
+                productContext += `- ${p.name} → Precio Lista: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
+              });
+              console.log(`Encontrados ${products.length} productos de ${mentionedBrand}`);
+            }
           }
 
           // ── Llamar a OpenAI GPT ──

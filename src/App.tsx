@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -888,6 +889,7 @@ function Messenger() {
       setBotPrompt(map['system_prompt'] || '');
     } catch (e) { console.error(e); }
     setBotConfigLoading(false);
+    fetchProductCount();
   };
 
   const saveBotConfig = async () => {
@@ -909,6 +911,71 @@ function Messenger() {
     setBotSaving(false);
   };
 
+  // Products Catalog
+  const [productCount, setProductCount] = useState(0);
+  const [productUploading, setProductUploading] = useState(false);
+
+  const fetchProductCount = async () => {
+    const { count } = await supabase.from('ng_products').select('*', { count: 'exact', head: true });
+    setProductCount(count || 0);
+  };
+
+  const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProductUploading(true);
+    
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+      const products: any[] = [];
+      for (let i = 5; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0] || row[0] === 'Grand Total') continue;
+        
+        const code = String(row[0]).trim();
+        const altCode = row[3] ? String(row[3]).trim() : null;
+        const fullName = row[7] ? String(row[7]).trim() : '';
+        const price = typeof row[10] === 'number' ? row[10] : parseFloat(row[10]) || 0;
+        const stock = typeof row[13] === 'number' ? row[13] : parseInt(row[13]) || 0;
+
+        const brandMatch = fullName.match(/^N\.\s+(\S+)/);
+        const brand = brandMatch ? brandMatch[1] : '';
+        const measureMatch = fullName.match(/(\d{2,3}\/\d{2,3}\s*R\s*\d{2,3})/i);
+        const measure = measureMatch ? measureMatch[1].replace(/\s+/g, '') : '';
+
+        if (code && fullName) {
+          products.push({ code, alt_code: altCode, name: fullName, brand, measure, price, stock });
+        }
+      }
+
+      if (products.length === 0) {
+        showSystemModal('Error', 'No se encontraron productos en el archivo. Verificá el formato.', 'error');
+        setProductUploading(false);
+        return;
+      }
+
+      // Clear and re-upload
+      await supabase.from('ng_products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Upload in batches of 50
+      for (let i = 0; i < products.length; i += 50) {
+        const batch = products.slice(i, i + 50);
+        await supabase.from('ng_products').insert(batch);
+      }
+
+      setProductCount(products.length);
+      showSystemModal('Catálogo Actualizado', `Se importaron ${products.length} productos correctamente. El bot ya tiene acceso a los precios actualizados.`, 'success');
+    } catch (err: any) {
+      console.error('Error uploading products:', err);
+      showSystemModal('Error', 'Error procesando el archivo: ' + err.message, 'error');
+    }
+    setProductUploading(false);
+    e.target.value = '';
+  };
 
   useEffect(() => {
     fetchMessages();
@@ -1604,6 +1671,48 @@ function Messenger() {
                           className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[12px] leading-relaxed focus:border-blue-400 focus:outline-none bg-white resize-y font-mono"
                           placeholder="Escribí las instrucciones del bot aquí..."
                         />
+                      </div>
+
+                      {/* Catálogo de Precios */}
+                      <div className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h3 className="text-[14px] font-bold text-slate-800 flex items-center">
+                              <Package className="w-4 h-4 mr-2 text-green-600" />
+                              Catálogo de Precios
+                            </h3>
+                            <p className="text-[11px] text-slate-400 mt-0.5">El bot usa estos precios para cotizar automáticamente</p>
+                          </div>
+                          <div className="bg-green-100 text-green-700 text-[12px] font-bold px-3 py-1.5 rounded-lg">
+                            {productCount} productos
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                          <label className={`flex-1 flex items-center justify-center border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-all ${productUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
+                            <input 
+                              type="file" 
+                              accept=".xls,.xlsx" 
+                              onChange={handleProductUpload} 
+                              className="hidden" 
+                              disabled={productUploading}
+                            />
+                            {productUploading ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
+                                <span className="text-[12px] text-blue-600 font-bold">Importando productos...</span>
+                              </>
+                            ) : (
+                              <>
+                                <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
+                                <div className="text-left">
+                                  <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
+                                  <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
+                                </div>
+                              </>
+                            )}
+                          </label>
+                        </div>
                       </div>
 
                       {/* Info box */}
