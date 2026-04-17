@@ -1094,7 +1094,7 @@ function Messenger() {
         <div className="p-3 border-b border-slate-100">
           <div className="bg-slate-100 rounded-lg flex items-center px-3 py-2 border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400">
             <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar conversación..." className="bg-transparent border-none outline-none text-[13px] w-full text-white" />
+            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar conversación..." className="bg-transparent border-none outline-none text-[13px] w-full text-slate-800" />
           </div>
         </div>
 
