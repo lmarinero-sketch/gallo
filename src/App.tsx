@@ -41,7 +41,8 @@ import {
   Eye,
   Plus,
   Trash2,
-  X
+  X,
+  MessageSquarePlus
 } from 'lucide-react';
 
 export type ModalType = 'error' | 'success' | 'info';
@@ -764,6 +765,7 @@ function Messenger() {
   const [activeContactInfo, setActiveContactInfo] = useState<any>(null);
   const [activeClientsMap, setActiveClientsMap] = useState<Record<string, string>>({});
   const [newMessage, setNewMessage] = useState("");
+  const [showWaPicker, setShowWaPicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   
   // Edición
@@ -1930,11 +1932,52 @@ function Messenger() {
                 </div>
               )}
 
-              <div className="bg-white p-4 shrink-0 flex items-center shadow-[0_-2px_10px_-4px_rgba(0,0,0,0.05)] border-t border-slate-200 relative">
+                <div className="bg-white p-4 shrink-0 flex items-center shadow-[0_-2px_10px_-4px_rgba(0,0,0,0.05)] border-t border-slate-200 relative">
                 {is24hExpired && (
                   <div className="absolute top-0 left-0 right-0 -translate-y-full bg-amber-100 border-y border-amber-300 px-6 py-2.5 flex items-center justify-center shadow-md z-30">
                     <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
                     <span className="text-[12px] font-bold text-amber-800">Sesión expirada (+24hs). DEBES iniciar con una Plantilla oficial (usa "/")</span>
+                  </div>
+                )}
+                
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShowWaPicker(!showWaPicker);
+                    if (!waTemplates.length) fetchWaTemplates();
+                  }}
+                  className="w-12 h-12 flex-shrink-0 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-full flex items-center justify-center transition-all bg-slate-50 border border-slate-200 shadow-sm"
+                  title="Plantillas Oficiales (Meta)"
+                >
+                  <MessageSquarePlus className="w-5 h-5" />
+                </button>
+
+                {showWaPicker && (
+                  <div className="absolute bottom-full left-4 w-[400px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
+                    <div className="bg-green-50 p-2.5 border-b border-green-100 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-green-700 uppercase tracking-wider">Plantillas Meta (Con Costo)</span>
+                      <button onClick={() => setShowWaPicker(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {waTemplatesLoading ? (
+                        <div className="p-4 text-center text-sm text-slate-400 font-medium animate-pulse">Cargando Meta API...</div>
+                      ) : waTemplates.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-slate-400 font-medium">No hay plantillas oficiales disponibles.</div>
+                      ) : (
+                        waTemplates.map((t, idx) => {
+                          const body = t.components?.find((c: any) => c.type === 'BODY')?.text || 'Plantilla sin texto';
+                          return (
+                            <div key={idx} className="p-3 hover:bg-green-50/50 border-b border-slate-50 cursor-pointer transition-colors" onClick={() => applyOfficialTemplate(t)}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[13px] font-bold text-slate-700">{t.name}</span>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono uppercase">{t.language || 'es'}</span>
+                              </div>
+                              <p className="text-[12px] text-slate-500 truncate">{body}</p>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 )}
                 
