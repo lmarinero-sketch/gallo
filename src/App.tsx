@@ -1126,6 +1126,7 @@ function Messenger() {
 
     if (lastWord.startsWith('/')) {
       setShowTemplates(true);
+      if (!waTemplates.length && !waTemplatesLoading) fetchWaTemplates();
       const search = lastWord.toUpperCase();
       const matches = templates.filter(t => t.shortcut.toUpperCase().startsWith(search));
       setFilteredTemplates(matches.length > 0 ? matches : templates);
@@ -1933,6 +1934,32 @@ function Messenger() {
                       <div className="p-4 text-center text-sm text-slate-400 font-medium">
                         No hay plantillas. <button onClick={() => setShowAddTemplate(true)} className="text-blue-500 hover:underline">Crear la primera</button>
                       </div>
+                    )}
+                    
+                    {/* SECCIÓN META TEMPLATES */}
+                    <div className="bg-slate-100 px-3 py-1.5 border-y border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center">
+                        <MessageSquarePlus className="w-3 h-3 mr-1" />
+                        Plantillas Meta (Con Costo)
+                      </span>
+                    </div>
+                    {waTemplatesLoading ? (
+                      <div className="p-4 text-center text-xs text-slate-400 font-medium animate-pulse">Cargando Meta API...</div>
+                    ) : waTemplates.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">No hay plantillas oficiales recibidas.<br/><button onClick={fetchWaTemplates} className="text-blue-500 hover:underline mt-1">Actualizar</button></div>
+                    ) : (
+                      waTemplates.map((t, idx) => {
+                        const body = t.components?.find((c: any) => c.type === 'BODY')?.text || 'Plantilla sin texto';
+                        return (
+                          <div key={`meta-${idx}`} className="p-3 hover:bg-green-50/50 border-b border-slate-100 cursor-pointer transition-colors" onClick={() => applyOfficialTemplate(t)}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[13px] font-bold text-green-700">/{t.name}</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-mono uppercase text-[8px] flex items-center">Oficial</span>
+                            </div>
+                            <p className="text-[12px] text-slate-500 truncate">{body}</p>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
