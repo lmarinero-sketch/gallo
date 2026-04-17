@@ -884,6 +884,7 @@ function Messenger() {
   const [botPrompt, setBotPrompt] = useState('');
   const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [botSaving, setBotSaving] = useState(false);
+  const [showBotHelp, setShowBotHelp] = useState(false);
 
   const fetchBotConfig = async () => {
     setBotConfigLoading(true);
@@ -1652,9 +1653,18 @@ function Messenger() {
                   ) : (
                     <div className="space-y-6">
                       {/* Toggle + Trigger */}
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                         <div>
-                          <h3 className="text-[14px] font-bold text-slate-800">Edge Bot IA</h3>
+                          <div className="flex items-center space-x-2">
+                            <h3 className="text-[14px] font-bold text-slate-800">Edge Bot IA</h3>
+                            <button 
+                              onClick={() => setShowBotHelp(!showBotHelp)}
+                              className={`transition-colors focus:outline-none p-1 rounded-full ${showBotHelp ? 'text-blue-600 bg-blue-100' : 'text-slate-400 hover:text-blue-500 bg-slate-100 hover:bg-blue-50'}`}
+                              title="¿Cómo funciona el bot?"
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           <p className="text-[12px] text-slate-400 mt-0.5">Bot con inteligencia artificial que responde automáticamente vía GPT</p>
                         </div>
                         <button 
@@ -1672,6 +1682,30 @@ function Messenger() {
                           <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${botEnabled ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
                         </button>
                       </div>
+
+                      {/* Info Panel Desplegable */}
+                      {showBotHelp && (
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 text-[12px] text-slate-700 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <p className="font-bold text-blue-800 flex items-center mb-2"><Sparkles className="w-4 h-4 mr-1.5"/> ¿Cómo reacciona este Bot?</p>
+                          
+                          <div className="grid gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-blue-50 shadow-sm">
+                              <h4 className="font-bold text-slate-800 flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5 text-green-500"/> Personalidad Auto-Adaptable</h4>
+                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Si el cliente envía un mensaje cortísimo ("Hola, precio?"), el bot entra en modo <b>Ejecutivo Express</b> y responde con algo muy directo. Si hace consultas muy técnicas o largas sobre medidas y rodados, activa su perfil de <b>Asesor Experto</b> para explayarse y ser persuasivo.</p>
+                            </div>
+                            
+                            <div className="bg-white p-3 rounded-lg border border-blue-50 shadow-sm">
+                              <h4 className="font-bold text-slate-800 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1.5 text-amber-500"/> Pase a Humano (Pausa Automática)</h4>
+                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">En el exacto momento en que el bot lea una intención de hablar con alguien "real" (ej: "pasame con un vendedor"), mandará un mensaje de derivación amigable y <b>se silenciará a sí mismo por 24 horas continuas</b> para no molestar tus ventas.</p>
+                            </div>
+                            
+                            <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 shadow-sm text-slate-300">
+                              <h4 className="font-bold text-white flex items-center"><RefreshCw className="w-3.5 h-3.5 mr-1.5 text-blue-400"/> Reactivación Manual</h4>
+                              <p className="text-[11px] mt-1 leading-relaxed">Si durante las 24 hs de silencio quieres que la IA vuelva al rescate en la charla, simplemente el cliente debe escribir la palabra mágica <code className="bg-slate-900 px-1.5 py-0.5 rounded text-green-400 font-mono">ASISTENTE</code>, y el bot retomará la sesión al instante.</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Trigger Word */}
                       <div>
