@@ -1372,12 +1372,12 @@ function Messenger() {
 
       {/* RIGHT SIDE PANEL: Facturas Asociadas */}
       {activeContact && activeContactInfo?.invoices && activeContactInfo.invoices.length > 0 && (
-        <div className="w-[320px] bg-[#0A0A0A] text-white flex flex-col shrink-0 overflow-y-auto border-l border-white/5 relative z-20">
-          <div className="p-8 flex flex-col items-center border-b border-white/5">
-            <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center font-bold text-xl uppercase text-slate-300 mb-4 shadow-md border border-white/10">
+        <div className="w-[320px] bg-white text-slate-800 flex flex-col shrink-0 overflow-y-auto border-l border-slate-200 relative z-20">
+          <div className="p-8 flex flex-col items-center border-b border-slate-100 bg-slate-50">
+            <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center font-bold text-xl uppercase text-blue-600 mb-4 shadow-sm border border-blue-200">
               {activeContactInfo?.name ? activeContactInfo.name.substring(0,2) : activeContact.substring(0,2)}
             </div>
-            <h3 className="font-bold text-center text-[15px] tracking-wide text-white">{activeContactInfo?.name || 'CLIENTE'}</h3>
+            <h3 className="font-bold text-center text-[15px] tracking-wide text-slate-800">{activeContactInfo?.name || 'CLIENTE'}</h3>
             <p className="text-slate-400 text-xs mt-1 tracking-wider">{activeContact}</p>
           </div>
           
@@ -1389,33 +1389,33 @@ function Messenger() {
             
             <div className="space-y-4">
               {activeContactInfo.invoices.map((inv: any, idx: number) => (
-                <div key={idx} className="bg-[#1A1A1A] border border-white/5 rounded-xl p-4 transition-colors hover:border-[#00FF88]/30 hover:bg-[#1A1A1A]/80 relative overflow-hidden group">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-[#00FF88]/80 transform origin-top scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 transition-all hover:border-blue-300 hover:shadow-md relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 transform origin-top scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
                   
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-[13px] font-bold text-[#00FF88] tracking-wider">FA-{inv.id.substring(0,6).toUpperCase()}</span>
-                    <span className="text-[9px] font-bold bg-[#FACC15]/10 text-[#FACC15] border border-[#FACC15]/20 px-2 py-0.5 rounded-[4px] tracking-wider">PENDIENTE</span>
+                    <span className="text-[13px] font-bold text-blue-600 tracking-wider">FA-{inv.id.substring(0,6).toUpperCase()}</span>
+                    <span className="text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-[4px] tracking-wider">PENDIENTE</span>
                   </div>
                   
-                  <div className="space-y-2 text-[12px] text-slate-300">
-                    <p className="flex justify-between border-b border-white/5 pb-1">
-                      <span className="text-slate-500 font-medium">Motivo:</span>
-                      <span className="truncate max-w-[140px] font-medium" title={Array.isArray(inv.items) ? inv.items.join(', ') : inv.items || 'Detalles'}>
+                  <div className="space-y-2 text-[12px] text-slate-600">
+                    <p className="flex justify-between border-b border-slate-100 pb-1">
+                      <span className="text-slate-400 font-medium">Motivo:</span>
+                      <span className="truncate max-w-[140px] font-medium text-slate-700" title={Array.isArray(inv.items) ? inv.items.join(', ') : inv.items || 'Detalles'}>
                         {Array.isArray(inv.items) ? inv.items[0] : (inv.items || 'Detalles').split(',')[0]}
                       </span>
                     </p>
-                    <p className="flex justify-between border-b border-white/5 pb-1">
-                      <span className="text-slate-500 font-medium">Total:</span>
-                      <span className="font-bold text-white">${inv.amount}</span>
+                    <p className="flex justify-between border-b border-slate-100 pb-1">
+                      <span className="text-slate-400 font-medium">Total:</span>
+                      <span className="font-bold text-slate-800">${inv.amount}</span>
                     </p>
                     <p className="flex justify-between pb-1">
-                      <span className="text-slate-500 font-medium">Fecha:</span>
-                      <span className="text-slate-300">{inv.purchase_date}</span>
+                      <span className="text-slate-400 font-medium">Fecha:</span>
+                      <span className="text-slate-600">{inv.purchase_date}</span>
                     </p>
                   </div>
                   
                   {inv.file_url && (
-                    <a href={inv.file_url} target="_blank" rel="noreferrer" className="mt-4 w-full py-2.5 rounded-lg border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-bold tracking-[0.2em] flex items-center justify-center hover:bg-[#00FF88] hover:text-black transition-all">
+                    <a href={inv.file_url} target="_blank" rel="noreferrer" className="mt-4 w-full py-2.5 rounded-lg border border-blue-200 text-blue-600 text-[10px] font-bold tracking-[0.2em] flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all">
                       <ExternalLink className="w-3 h-3 mr-2" />
                       VER PDF
                     </a>
