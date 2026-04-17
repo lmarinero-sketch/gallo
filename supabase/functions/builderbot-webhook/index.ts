@@ -264,7 +264,7 @@ serve(async (req) => {
               },
               body: JSON.stringify({
                 number: phone,
-                message: aiResponse
+                messages: { content: aiResponse }
               })
             });
 
