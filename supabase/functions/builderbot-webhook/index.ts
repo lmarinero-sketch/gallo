@@ -125,7 +125,7 @@ serve(async (req) => {
       const { data: dbClient } = await supabase.from('ng_clients').select('bot_paused_until').eq('phone', phone).single();
       
       const triggerWord = "asistente";
-      const isTriggerWord = body.trim().toLowerCase() === triggerWord;
+      const isTriggerWord = body.toLowerCase().includes(triggerWord);
       
       let isPaused = false;
       if (dbClient && dbClient.bot_paused_until) {
