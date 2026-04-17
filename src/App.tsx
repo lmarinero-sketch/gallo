@@ -801,7 +801,7 @@ function Messenger() {
 
   // Settings Modal
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'templates' | 'blacklist' | 'wa-templates' | 'general'>('templates');
+  const [settingsTab, setSettingsTab] = useState<'templates' | 'blacklist' | 'wa-templates' | 'bot-ia' | 'general'>('templates');
   const [blacklist, setBlacklist] = useState<any[]>([]);
   const [blacklistInput, setBlacklistInput] = useState('');
   const [blacklistLoading, setBlacklistLoading] = useState(false);
@@ -862,11 +862,51 @@ function Messenger() {
     setWaTemplatesLoading(false);
   };
 
-  const openSettings = (tab: 'templates' | 'blacklist' | 'wa-templates' | 'general' = 'templates') => {
+  const openSettings = (tab: 'templates' | 'blacklist' | 'wa-templates' | 'bot-ia' | 'general' = 'templates') => {
     setSettingsTab(tab);
     setShowSettings(true);
     if (tab === 'blacklist') fetchBlacklist();
     if (tab === 'wa-templates') fetchWaTemplates();
+    if (tab === 'bot-ia') fetchBotConfig();
+  };
+
+  // Bot IA Config
+  const [botEnabled, setBotEnabled] = useState(true);
+  const [botTrigger, setBotTrigger] = useState('edge');
+  const [botPrompt, setBotPrompt] = useState('');
+  const [botConfigLoading, setBotConfigLoading] = useState(false);
+  const [botSaving, setBotSaving] = useState(false);
+
+  const fetchBotConfig = async () => {
+    setBotConfigLoading(true);
+    try {
+      const { data } = await supabase.from('ng_bot_config').select('key, value');
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: any) => { map[c.key] = c.value; });
+      setBotEnabled(map['bot_enabled'] === 'true');
+      setBotTrigger(map['bot_trigger'] || '');
+      setBotPrompt(map['system_prompt'] || '');
+    } catch (e) { console.error(e); }
+    setBotConfigLoading(false);
+  };
+
+  const saveBotConfig = async () => {
+    setBotSaving(true);
+    try {
+      const upserts = [
+        { key: 'bot_enabled', value: botEnabled ? 'true' : 'false' },
+        { key: 'bot_trigger', value: botTrigger },
+        { key: 'system_prompt', value: botPrompt }
+      ];
+      for (const u of upserts) {
+        await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+      }
+      showSystemModal('Bot IA', 'Configuración guardada. Los cambios se aplican en tiempo real.', 'success');
+    } catch (e) {
+      console.error(e);
+      showSystemModal('Error', 'No se pudo guardar la configuración.', 'error');
+    }
+    setBotSaving(false);
   };
 
 
@@ -1254,6 +1294,7 @@ function Messenger() {
                 { key: 'templates', label: '📋 Plantillas Rápidas' },
                 { key: 'blacklist', label: '🚫 Blacklist Bot' },
                 { key: 'wa-templates', label: '📱 Plantillas WhatsApp' },
+                { key: 'bot-ia', label: '🤖 Bot IA' },
                 { key: 'general', label: '⚙️ General' },
               ].map(tab => (
                 <button
@@ -1262,6 +1303,7 @@ function Messenger() {
                     setSettingsTab(tab.key as any);
                     if (tab.key === 'blacklist') fetchBlacklist();
                     if (tab.key === 'wa-templates') fetchWaTemplates();
+                    if (tab.key === 'bot-ia') fetchBotConfig();
                   }}
                   className={`px-4 py-3 text-[12px] font-bold border-b-2 transition-colors ${
                     settingsTab === tab.key 
@@ -1508,6 +1550,89 @@ function Messenger() {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ── TAB: Bot IA ── */}
+              {settingsTab === 'bot-ia' && (
+                <div>
+                  {botConfigLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mr-2" />
+                      <span className="text-[13px] text-slate-400">Cargando configuración del bot...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Toggle + Trigger */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[14px] font-bold text-slate-800">Edge Bot IA</h3>
+                          <p className="text-[12px] text-slate-400 mt-0.5">Bot con inteligencia artificial que responde automáticamente vía GPT</p>
+                        </div>
+                        <button 
+                          onClick={() => setBotEnabled(!botEnabled)}
+                          className={`relative w-12 h-6 rounded-full transition-colors ${botEnabled ? 'bg-green-500' : 'bg-slate-300'}`}
+                        >
+                          <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${botEnabled ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
+                        </button>
+                      </div>
+
+                      {/* Trigger Word */}
+                      <div>
+                        <label className="text-[12px] font-bold text-slate-600 block mb-1.5">Palabra Clave de Activación</label>
+                        <p className="text-[11px] text-slate-400 mb-2">El bot solo responderá cuando el mensaje contenga esta palabra. Dejá vacío para responder siempre.</p>
+                        <input 
+                          type="text" 
+                          value={botTrigger} 
+                          onChange={e => setBotTrigger(e.target.value)}
+                          placeholder="Ej: edge (vacío = responde siempre)" 
+                          className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[13px] focus:border-blue-400 focus:outline-none bg-white font-mono"
+                        />
+                      </div>
+
+                      {/* System Prompt Editor */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[12px] font-bold text-slate-600">System Prompt (Instrucciones del Bot)</label>
+                          <span className="text-[10px] text-slate-400">{botPrompt.length} caracteres</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mb-2">Este es el prompt que define la personalidad, conocimiento y comportamiento del bot. Los cambios se aplican en tiempo real.</p>
+                        <textarea 
+                          value={botPrompt} 
+                          onChange={e => setBotPrompt(e.target.value)}
+                          rows={16}
+                          className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[12px] leading-relaxed focus:border-blue-400 focus:outline-none bg-white resize-y font-mono"
+                          placeholder="Escribí las instrucciones del bot aquí..."
+                        />
+                      </div>
+
+                      {/* Info box */}
+                      <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 flex items-start">
+                        <Sparkles className="w-4 h-4 text-blue-500 mr-3 mt-0.5 shrink-0" />
+                        <div className="text-[12px] text-blue-700">
+                          <p className="font-bold mb-1">¿Cómo funciona?</p>
+                          <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                            <li>Cuando un cliente envía un mensaje con la palabra clave, la Edge Function intercepta el mensaje</li>
+                            <li>Se arma el contexto con los últimos 20 mensajes de la conversación</li>
+                            <li>Se envía a GPT con este System Prompt</li>
+                            <li>La respuesta se envía automáticamente vía WhatsApp</li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* Save Button */}
+                      <div className="flex justify-end pt-2">
+                        <button 
+                          onClick={saveBotConfig} 
+                          disabled={botSaving}
+                          className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-[12px] font-bold px-6 py-2.5 rounded-lg transition-colors flex items-center"
+                        >
+                          {botSaving ? <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-2" />}
+                          {botSaving ? 'Guardando...' : 'Guardar Configuración'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
