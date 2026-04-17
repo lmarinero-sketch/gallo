@@ -959,12 +959,28 @@ function Messenger() {
     setShowTemplates(false);
 
     // Save to local Supabase Database
-    await supabase.from('ng_whatsapp_messages').insert([{
+    const optimisticMessage = {
+      id: crypto.randomUUID(),
+      client_phone: activeContact,
+      body: newMessage,
+      direction: 'outgoing',
+      message_type: 'text',
+      created_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from('ng_whatsapp_messages').insert([{
       client_phone: activeContact,
       body: newMessage,
       direction: 'outgoing',
       message_type: 'text'
     }]);
+
+    if (error) {
+      console.error("Error BD al insertar mensaje: ", error);
+      showSystemModal("Error en Base de Datos", "No se pudo guardar el mensaje: " + error.message, "error");
+    } else {
+      setMessages(prev => [optimisticMessage, ...prev]);
+    }
 
     // Send to BuilderBot Cloud
     const builderBotUrl = import.meta.env.VITE_BUILDERBOT_API_URL;
