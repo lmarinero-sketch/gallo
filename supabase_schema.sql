@@ -91,3 +91,5 @@ GRANT ALL ON public.ng_error_logs TO anon, authenticated, service_role;
 -- Columnas adicionales
 ALTER TABLE public.ng_follow_ups ADD COLUMN IF NOT EXISTS observations TEXT;
 ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS bot_paused_until TIMESTAMP WITH TIME ZONE;
+

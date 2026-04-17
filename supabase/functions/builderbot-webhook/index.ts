@@ -121,6 +121,44 @@ serve(async (req) => {
     if (!isOutgoing && body) {
       console.log("=== EDGE BOT: Evaluando si debe responder ===");
       
+      // Obtener el estado del cliente para ver si el bot está pausado
+      const { data: dbClient } = await supabase.from('ng_clients').select('bot_paused_until').eq('phone', phone).single();
+      
+      const triggerWord = "asistente";
+      const isTriggerWord = body.trim().toLowerCase() === triggerWord;
+      
+      let isPaused = false;
+      if (dbClient && dbClient.bot_paused_until) {
+        const pausedUntil = new Date(dbClient.bot_paused_until).getTime();
+        if (pausedUntil > Date.now()) {
+          isPaused = true;
+        }
+      }
+
+      if (isPaused) {
+        if (isTriggerWord) {
+          console.log(`=== EDGE BOT: Palabra Trigger detectada ("${triggerWord}"). Reactivando bot... ===`);
+          await supabase.from('ng_clients').update({ bot_paused_until: null }).eq('phone', phone);
+          
+          const welcomeMsg = "¡Hola de nuevo! Ya estoy activo para ayudarte. ¿En qué nos quedamos? 🤖";
+          const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
+          const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
+          const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
+          
+          await fetch(`${bbUrl}/${bbBotId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-builderbot': bbKey },
+            body: JSON.stringify({ number: phone, messages: { content: welcomeMsg } })
+          });
+          
+          await supabase.from('ng_whatsapp_messages').insert({ client_phone: phone, body: welcomeMsg, direction: 'outgoing', message_type: 'text' });
+          return new Response(JSON.stringify({ success: true, reason: 'bot_reactivated' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+        } else {
+          console.log(`=== EDGE BOT: Silenciado por Human Handoff (hasta ${new Date(dbClient.bot_paused_until).toLocaleString()}). Ignorando msj. ===`);
+          return new Response(JSON.stringify({ success: true, reason: 'bot_paused' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+        }
+      }
+
       // Leer configuración del bot
       const { data: configs } = await supabase
         .from('ng_bot_config')
@@ -131,16 +169,24 @@ serve(async (req) => {
       (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
 
       const botEnabled = configMap['bot_enabled'] === 'true';
-      const botTrigger = (configMap['bot_trigger'] || '').toLowerCase().trim();
-      const systemPrompt = configMap['system_prompt'] || '';
+      const botTriggerConfig = (configMap['bot_trigger'] || '').toLowerCase().trim();
+      
+      // Auto-Adaptive Profile & Human Handoff Instructions
+      const adaptiveInstructions = `
+[REGLA DE PERFIL AUTO-ADAPTABLE]: 
+Analiza la longitud y complejidad del último mensaje del cliente. Si el cliente escribe menos de 5 palabras o respuestas muy cerradas, tú debes responder con formato 'Ejecutivo Express' (Muy directo, hiper-resumido, máximo 15 palabras). Si el cliente pide detalles técnicos, hace preguntas largas o tiene dudas complejas, responde con formato 'Asesor Experto' (Detallado, persuasivo y técnico).
 
-      console.log(`Bot enabled: ${botEnabled}, Trigger: "${botTrigger}"`);
+[REGLA DE PASE A HUMANO (HUMAN HANDOFF)]:
+Si el cliente solicita EXPLÍCITAMENTE hablar con un vendedor humano, asesor o persona real (ej: "pasame con un vendedor", "quiero hablar con alguien", "pasame con un humano", etc.), DEBES incluir obligatoriamente al inicio de tu respuesta el texto "__HUMAN_HANDOFF__". 
+Luego de esa etiqueta, despídete amablemente del cliente informando que lo comunicas con un experto, y avísale que si quiere volver a hablar con el asistente de IA, debe escribir la palabra "ASISTENTE". (Ejemplo: "__HUMAN_HANDOFF__ Entendido, te voy a derivar con un experto de nuestro equipo. En cuanto se desocupe alguien te escribe por acá mismo. 👨‍🔧 (Si quieres volver a hablar conmigo, solo escribe la palabra ASISTENTE).")`;
 
-      // Verificar si debe activarse:
-      // - Si hay trigger, el mensaje debe contener esa palabra (para testing)
-      // - Si no hay trigger, siempre responde
-      const messageContainsTrigger = botTrigger 
-        ? body.toLowerCase().includes(botTrigger) 
+      const systemPrompt = (configMap['system_prompt'] || '') + '\n\n' + adaptiveInstructions;
+
+      console.log(`Bot enabled: ${botEnabled}, TriggerConfig: "${botTriggerConfig}"`);
+
+      // Verificar si debe activarse (para pruebas locales o activador manual global si existiese)
+      const messageContainsTrigger = botTriggerConfig 
+        ? body.toLowerCase().includes(botTriggerConfig) 
         : true;
 
       if (botEnabled && systemPrompt && messageContainsTrigger) {
@@ -230,7 +276,7 @@ serve(async (req) => {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'gpt-4.1',
+              model: 'gpt-4o-mini',
               messages: openaiMessages,
               max_tokens: 1024,
               temperature: 0.7
@@ -244,15 +290,29 @@ serve(async (req) => {
           }
 
           const openaiData = await openaiRes.json();
-          const aiResponse = openaiData.choices?.[0]?.message?.content || '';
+          let aiResponse = openaiData.choices?.[0]?.message?.content || '';
           
           console.log(`GPT respondió (${aiResponse.length} chars): ${aiResponse.substring(0, 100)}...`);
 
           if (aiResponse) {
+            
+            // ── Procesar Human Handoff si existe ──
+            const handoffTrigger = '__HUMAN_HANDOFF__';
+            if (aiResponse.includes(handoffTrigger)) {
+              console.log("=== EDGE BOT: HUMAN HANDOFF DETECTADO ===");
+              aiResponse = aiResponse.replace(handoffTrigger, '').trim();
+              
+              // Suspender bot por 24 hs
+              const pauseUntilDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+              const { error: handoffErr } = await supabase.from('ng_clients').update({ bot_paused_until: pauseUntilDate.toISOString() }).eq('phone', phone);
+              if (handoffErr) console.error("Error al pausar el bot:", handoffErr);
+            }
+
             // ── Enviar respuesta vía BuilderBot API ──
             const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
             const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
             const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
+
 
             console.log(`Enviando respuesta vía BuilderBot a ${phone}...`);
 
