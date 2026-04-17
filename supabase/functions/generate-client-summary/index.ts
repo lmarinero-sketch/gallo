@@ -33,13 +33,28 @@ serve(async (req) => {
       const { data: clients } = await supabase
         .from("ng_clients")
         .select("id")
-        .or("ai_summary.is.null,ai_summary.eq.");
+        .or("ai_summary.is.null,ai_summary.eq.")
+        .limit(5);
       clientIds = (clients || []).map((c: any) => c.id);
     }
 
-    const results: any[] = [];
+    // Fetch custom prompt if defined
+    let systemPromptBase = `Eres un asistente de CRM para "Gallo Neumáticos", un negocio de neumáticos y servicios automotor en Argentina.
+      
+Genera un resumen BREVE (máximo 3-4 oraciones) y ACCIONABLE del siguiente cliente. El resumen debe:
+1. Indicar qué compró y cuándo fue su última actividad
+2. Identificar oportunidades de venta (ej: si compró cubiertas hace meses, puede necesitar alineación)
+3. Mencionar el tono de la relación (si hay mensajes, ¿fue amable, tiene reclamos?)
+4. Sugerir la próxima acción concreta para el vendedor`;
 
-    for (const cId of clientIds) {
+    try {
+      const { data: setting } = await supabase.from("ng_settings").select("value").eq("key", "ai_prompt_resumen").maybeSingle();
+      if (setting && setting.value) {
+        systemPromptBase = setting.value;
+      }
+    } catch(e) {}
+
+    const processClient = async (cId: string) => {
       // Get client info
       const { data: client } = await supabase
         .from("ng_clients")
@@ -47,7 +62,7 @@ serve(async (req) => {
         .eq("id", cId)
         .single();
 
-      if (!client) continue;
+      if (!client) return null;
 
       // Get their invoices
       const { data: invoices } = await supabase
@@ -88,14 +103,8 @@ serve(async (req) => {
         `- Seguimiento "${f.reason}" (${f.status}) para ${f.scheduled_date}${f.observations ? ` | Obs: ${f.observations}` : ''}`
       ).join("\n");
 
-      const prompt = `Eres un asistente de CRM para "Gallo Neumáticos", un negocio de neumáticos y servicios automotor en Argentina.
+      const prompt = `${systemPromptBase}
       
-Genera un resumen BREVE (máximo 3-4 oraciones) y ACCIONABLE del siguiente cliente. El resumen debe:
-1. Indicar qué compró y cuándo fue su última actividad
-2. Identificar oportunidades de venta (ej: si compró cubiertas hace meses, puede necesitar alineación)
-3. Mencionar el tono de la relación (si hay mensajes, ¿fue amable, tiene reclamos?)
-4. Sugerir la próxima acción concreta para el vendedor
-
 DATOS DEL CLIENTE:
 Nombre: ${client.name || "Sin nombre"}
 Teléfono: ${client.phone}
@@ -133,8 +142,11 @@ Responde SOLO con el resumen en español, sin encabezados ni bullet points. Sé 
         .update({ ai_summary: summary })
         .eq("id", cId);
 
-      results.push({ clientId: cId, name: client.name, summary });
-    }
+      return { clientId: cId, name: client.name, summary };
+    };
+
+    const resultsRaw = await Promise.all(clientIds.map(processClient));
+    const results = resultsRaw.filter(r => r !== null);
 
     return new Response(JSON.stringify({ success: true, processed: results.length, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
