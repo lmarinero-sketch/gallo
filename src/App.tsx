@@ -801,15 +801,34 @@ function Messenger() {
     fetchTemplates();
     
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel('messenger-realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'ng_whatsapp_messages' },
         (payload) => {
-          setMessages(prev => [payload.new, ...prev]);
+          console.log('[Realtime] Nuevo mensaje recibido:', payload.new?.direction, payload.new?.body?.substring(0, 40));
+          setMessages(prev => {
+            // Deduplicar: si ya existe un mensaje con el mismo id o mismo body+phone en los últimos 30s, no agregar
+            const isDuplicate = prev.some(m => 
+              m.id === payload.new.id || 
+              (m.body === payload.new.body && m.client_phone === payload.new.client_phone && 
+               Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 30000)
+            );
+            if (isDuplicate) {
+              console.log('[Realtime] Mensaje duplicado, ignorando');
+              return prev;
+            }
+            return [payload.new, ...prev];
+          });
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log('[Realtime] Estado:', status, err || '');
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Realtime] Error en canal, reintentando en 5s...');
+          setTimeout(() => channel.subscribe(), 5000);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
