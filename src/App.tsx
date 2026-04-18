@@ -2946,20 +2946,25 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
         { key: 'system_prompt', value: botPrompt }
       ];
       for (const u of upserts) {
-        await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+        const { error } = await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+        if (error) throw error;
       }
 
       if (originalBotPrompt !== botPrompt) {
-        await supabase.from('ng_prompt_history').insert({
+        const { error } = await supabase.from('ng_prompt_history').insert({
           old_prompt: originalBotPrompt,
           new_prompt: botPrompt,
           username: localStorage.getItem('crm_username') || 'Admin'
         });
+        if (error) throw error;
         setOriginalBotPrompt(botPrompt);
         fetchPromptHistory(); // Auto-refresh history
       }
       alert("Configuración de IA Guardada!");
-    } catch (e) { console.error(e); }
+    } catch (e: any) { 
+      console.error(e);
+      alert("Error al guardar: " + (e.message || "Verifica la base de datos"));
+    }
     setBotSaving(false);
   };
 
@@ -3107,7 +3112,11 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                 <textarea rows={10} value={botPrompt} onChange={e => setBotPrompt(e.target.value)} placeholder="Sos el asesor virtual de Neumáticos Gallo..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all resize-none shadow-sm" />
               </div>
 
-              <div className="flex justify-end pt-2">
+              <div className="flex items-center justify-between pt-2">
+                 <button onClick={() => setBotPrompt(originalBotPrompt)} disabled={botPrompt === originalBotPrompt} className={`px-6 py-3 rounded-xl font-bold text-[12px] transition-all flex items-center ${botPrompt !== originalBotPrompt ? 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 hover:text-amber-700 shadow-sm' : 'bg-slate-50 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'}`}>
+                   <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                   Deshacer Cambios (Volver Atrás)
+                 </button>
                  <button onClick={saveBotConfig} disabled={botSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-6 py-3 rounded-xl shadow-md transition-all text-[12px]">
                    {botSaving ? 'Guardando...' : 'Guardar y Aplicar Historial'}
                  </button>

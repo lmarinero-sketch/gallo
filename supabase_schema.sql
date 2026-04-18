@@ -93,3 +93,26 @@ ALTER TABLE public.ng_follow_ups ADD COLUMN IF NOT EXISTS observations TEXT;
 ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS ai_summary TEXT;
 ALTER TABLE public.ng_clients ADD COLUMN IF NOT EXISTS bot_paused_until TIMESTAMP WITH TIME ZONE;
 
+
+-- Tabla de Historial de Prompts IA
+CREATE TABLE IF NOT EXISTS public.ng_prompt_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    username TEXT DEFAULT 'Admin',
+    old_prompt TEXT,
+    new_prompt TEXT
+);
+
+-- Tabla de Configuración General IA
+CREATE TABLE IF NOT EXISTS public.ng_bot_config (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Desactivar RLS para tablas admin
+ALTER TABLE public.ng_prompt_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ng_bot_config DISABLE ROW LEVEL SECURITY;
+
+-- Permisos
+GRANT ALL ON public.ng_prompt_history TO anon, authenticated, service_role;
+GRANT ALL ON public.ng_bot_config TO anon, authenticated, service_role;
