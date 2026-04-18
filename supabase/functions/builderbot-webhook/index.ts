@@ -67,6 +67,46 @@ serve(async (req) => {
       });
     }
 
+    let bodyText = body;
+    let visionImageUrl = null;
+    const sysOpenaiKey = Deno.env.get("OPENAI_API_KEY") || "";
+
+    // ── Procesamiento de Multimedia entrante (Audios -> Whisper, Imágenes -> Vision) ──
+    if (!isOutgoing && attachmentUrls && attachmentUrls.length > 0 && sysOpenaiKey) {
+      const mediaUrl = attachmentUrls[0];
+      try {
+        console.log(`Descargando media para análisis: ${mediaUrl}`);
+        const mediaRes = await fetch(mediaUrl);
+        const contentType = mediaRes.headers.get("Content-Type") || "";
+        
+        if (contentType.includes("audio")) {
+          console.log("Audio detectado. Usando Whisper...");
+          const audioBlob = await mediaRes.blob();
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'audio.ogg');
+          formData.append('model', 'whisper-1');
+          formData.append('language', 'es');
+          
+          const transcribeRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+             method: "POST", 
+             headers: { Authorization: `Bearer ${sysOpenaiKey}` }, 
+             body: formData
+          });
+          const transcribeJson = await transcribeRes.json();
+          if (transcribeJson.text) {
+             bodyText = transcribeJson.text;
+             console.log(`Transcripción exitosa: ${bodyText}`);
+          }
+        } else if (contentType.includes("image")) {
+          console.log("Imagen detectada. Guardando URL para Vision API...");
+          visionImageUrl = mediaUrl;
+          if (!bodyText) bodyText = "(El cliente envió una imagen)";
+        }
+      } catch(e) {
+        console.error("Error al procesar media entrante:", e);
+      }
+    }
+
     // ── Registrar/actualizar cliente (solo incoming con nombre) ──
     const pushName = payload.name || data.name || data.pushName || '';
     if (pushName && !isOutgoing) {
@@ -102,7 +142,7 @@ serve(async (req) => {
       .from('ng_whatsapp_messages')
       .insert({
         client_phone: phone,
-        body: body || 'Multimedia',
+        body: bodyText || 'Multimedia',
         direction: computedDirection,
         message_type: messageType,
         attachment_urls: attachmentUrls
@@ -125,7 +165,7 @@ serve(async (req) => {
       const { data: dbClient } = await supabase.from('ng_clients').select('bot_paused_until').eq('phone', phone).single();
       
       const triggerWord = "asistente";
-      const isTriggerWord = body.toLowerCase().includes(triggerWord);
+      const isTriggerWord = bodyText.toLowerCase().includes(triggerWord);
       
       let isPaused = false;
       if (dbClient && dbClient.bot_paused_until) {
@@ -189,7 +229,7 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
 
       // Verificar si debe activarse (para pruebas locales o activador manual global si existiese)
       const messageContainsTrigger = botTriggerConfig 
-        ? body.toLowerCase().includes(botTriggerConfig) 
+        ? bodyText.toLowerCase().includes(botTriggerConfig) 
         : true;
 
       if (botEnabled && systemPrompt && messageContainsTrigger) {
@@ -214,10 +254,10 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
           let productContext = '';
           
           // Buscar por medida si el mensaje contiene un patrón tipo "195/55 R16"
-          const measureMatch = body.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
+          const measureMatch = bodyText.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
           // Buscar por marca
           const brandKeywords = ['michelin', 'bridgestone', 'continental', 'pirelli', 'dunlop', 'goodyear', 'yokohama', 'hankook', 'nexen', 'fate', 'firestone', 'westlake', 'linglong', 'giti', 'kumho', 'falken', 'laufenn', 'bfgoodrich', 'chaoyang', 'windforce', 'firemax', 'triangle'];
-          const bodyLower = body.toLowerCase();
+          const bodyLower = bodyText.toLowerCase();
           const mentionedBrand = brandKeywords.find(b => bodyLower.includes(b));
 
           if (measureMatch) {
@@ -269,6 +309,17 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
             { role: 'system', content: systemPrompt + (productContext ? `\n\n# PRODUCTOS RELEVANTES\n${productContext}` : '') },
             ...chatHistory
           ];
+
+          if (visionImageUrl) {
+            // Reemplazar el content del último mensaje por un objeto Array de Vision API
+            const lastMsg = openaiMessages[openaiMessages.length - 1];
+            if (lastMsg && lastMsg.role === 'user') {
+               lastMsg.content = [
+                 { type: "text", text: lastMsg.content === "(El cliente envió una imagen)" ? "¿Qué se ve en esta imagen? Contextualiza si es una llanta, un neumático o un problema vehicular." : lastMsg.content },
+                 { type: "image_url", image_url: { url: visionImageUrl } }
+               ];
+            }
+          }
 
           console.log(`Enviando ${openaiMessages.length} mensajes a GPT (incluyendo system)...`);
           
