@@ -45,7 +45,9 @@ import {
   MessageSquarePlus,
   Paperclip,
   Image as ImageIcon,
-  Mic
+  Mic,
+  History,
+  RotateCcw
 } from 'lucide-react';
 
 export type ModalType = 'error' | 'success' | 'info';
@@ -2894,6 +2896,15 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
   const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Bot IA Config & Utilidades states
+  const [botEnabled, setBotEnabled] = useState(true);
+  const [botTrigger, setBotTrigger] = useState('edge');
+  const [botPrompt, setBotPrompt] = useState('');
+  const [originalBotPrompt, setOriginalBotPrompt] = useState('');
+  const [promptHistory, setPromptHistory] = useState<any[]>([]);
+  const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [botSaving, setBotSaving] = useState(false);
   
   // Settings State
   const [settings, setSettings] = useState<any>({
@@ -2910,7 +2921,61 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
   useEffect(() => {
     fetchSettings();
     fetchTemplates();
+    fetchBotConfig();
+    fetchPromptHistory();
   }, []);
+
+  const fetchBotConfig = async () => {
+    try {
+      const { data } = await supabase.from('ng_bot_config').select('key, value');
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: any) => { map[c.key] = c.value; });
+      setBotEnabled(map['bot_enabled'] === 'true');
+      setBotTrigger(map['bot_trigger'] || '');
+      setBotPrompt(map['system_prompt'] || '');
+      setOriginalBotPrompt(map['system_prompt'] || '');
+    } catch (e) { console.error(e); }
+  };
+
+  const saveBotConfig = async () => {
+    setBotSaving(true);
+    try {
+      const upserts = [
+        { key: 'bot_enabled', value: botEnabled ? 'true' : 'false' },
+        { key: 'bot_trigger', value: botTrigger },
+        { key: 'system_prompt', value: botPrompt }
+      ];
+      for (const u of upserts) {
+        await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+      }
+
+      if (originalBotPrompt !== botPrompt) {
+        await supabase.from('ng_prompt_history').insert({
+          old_prompt: originalBotPrompt,
+          new_prompt: botPrompt,
+          username: localStorage.getItem('crm_username') || 'Admin'
+        });
+        setOriginalBotPrompt(botPrompt);
+        fetchPromptHistory(); // Auto-refresh history
+      }
+      alert("Configuración de IA Guardada!");
+    } catch (e) { console.error(e); }
+    setBotSaving(false);
+  };
+
+  const fetchPromptHistory = async () => {
+    setFetchingHistory(true);
+    try {
+      const { data } = await supabase.from('ng_prompt_history').select('*').order('created_at', { ascending: false }).limit(50);
+      setPromptHistory(data || []);
+    } catch(e) { console.error(e); }
+    setFetchingHistory(false);
+  };
+
+  const handleRollbackPrompt = (oldPrompt: string) => {
+    setBotPrompt(oldPrompt);
+    setActiveTab('bot-ia');
+  };
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -2961,61 +3026,144 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
   }
 
   return (
-    <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} min-h-screen bg-[#0A0A0A] flex flex-col`}>
+    <div className={`flex-1 transition-[margin] duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'} min-h-screen bg-[#F8FAFC] flex flex-col`}>
       <TopBar title="Neumáticos Gallo" subtitle="Centro de Control & Configuración" />
       
       <main className="px-10 py-6 w-full flex gap-8">
         {/* Sidebar Nav */}
         <div className="w-[240px] shrink-0 space-y-1">
-          <button onClick={() => setActiveTab('general')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'general' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
-            <Settings className="w-4 h-4" /> General e IA
+          <button onClick={() => setActiveTab('general')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'general' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
+            <Settings className="w-4 h-4" /> General
           </button>
-          <button onClick={() => setActiveTab('whatsapp')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'whatsapp' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+          <button onClick={() => setActiveTab('bot-ia')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'bot-ia' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
+            <MessageSquare className="w-4 h-4" /> Bot IA
+          </button>
+          <button onClick={() => setActiveTab('whatsapp')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'whatsapp' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
             <MessageSquare className="w-4 h-4" /> WhatsApp API
           </button>
-          <button onClick={() => setActiveTab('seguimientos')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'seguimientos' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+          <button onClick={() => setActiveTab('seguimientos')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'seguimientos' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
             <Clock className="w-4 h-4" /> Seguimientos
           </button>
-          <button onClick={() => setActiveTab('plantillas')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'plantillas' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+          <button onClick={() => setActiveTab('plantillas')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'plantillas' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
             <FileText className="w-4 h-4" /> Plantillas Rápidas
           </button>
-          <button onClick={() => setActiveTab('equipo')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'equipo' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+          <button onClick={() => setActiveTab('utilidades')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'utilidades' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
+            <History className="w-4 h-4" /> Utilidades & Logs
+          </button>
+          <button onClick={() => setActiveTab('equipo')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'equipo' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
             <Users className="w-4 h-4" /> Equipo / Permisos
           </button>
-          <button onClick={() => setActiveTab('apariencia')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'apariencia' ? 'bg-[#00FF88]/10 text-[#00FF88] border border-[#00FF88]/20 shadow-[0_0_15px_rgba(0,255,136,0.1)]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}>
+          <button onClick={() => setActiveTab('apariencia')} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold transition-all flex items-center gap-3 ${activeTab === 'apariencia' ? 'bg-white text-blue-600 border border-slate-200/60 shadow-sm' : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'}`}>
             <Sparkles className="w-4 h-4" /> Apariencia
           </button>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 bg-[rgba(255,255,255,0.02)] backdrop-blur-xl border border-white/10 rounded-2xl p-8 relative overflow-hidden shadow-2xl">
-          {/* Radial Light */}
+        <div className="flex-1 bg-white border border-slate-200/60 rounded-2xl p-8 relative overflow-hidden shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#065F46]/20 rounded-full blur-[100px] -z-10 pointer-events-none translate-x-1/3 -translate-y-1/3"></div>
 
           {activeTab === 'general' && (
             <div className="animate-in fade-in space-y-8">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">Datos de Empresa</h3>
-                <p className="text-slate-400 text-sm mb-6">Información básica que se usa en resúmenes y encabezados.</p>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Datos de Empresa</h3>
+                <p className="text-slate-500 text-sm mb-6">Información básica que se usa en resúmenes y encabezados.</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre de Fantasía</label>
-                    <input type="text" value={settings.empresa_nombre} onChange={e => setSettings({...settings, empresa_nombre: e.target.value})} onBlur={() => saveSetting('empresa_nombre', settings.empresa_nombre)} className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 focus:border-[#00FF88] focus:ring-1 focus:ring-[#00FF88] focus:outline-none transition-all" />
+                    <input type="text" value={settings.empresa_nombre} onChange={e => setSettings({...settings, empresa_nombre: e.target.value})} onBlur={() => saveSetting('empresa_nombre', settings.empresa_nombre)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Sucursal / Ubicación</label>
-                    <input type="text" value={settings.empresa_sucursal} onChange={e => setSettings({...settings, empresa_sucursal: e.target.value})} onBlur={() => saveSetting('empresa_sucursal', settings.empresa_sucursal)} className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 focus:border-[#00FF88] focus:ring-1 focus:ring-[#00FF88] focus:outline-none transition-all" />
+                    <input type="text" value={settings.empresa_sucursal} onChange={e => setSettings({...settings, empresa_sucursal: e.target.value})} onBlur={() => saveSetting('empresa_sucursal', settings.empresa_sucursal)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
                   </div>
+                </div>
+              </div>            </div>
+          )}
+
+          {activeTab === 'bot-ia' && (
+            <div className="animate-in fade-in space-y-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                   <h3 className="text-xl font-bold text-slate-800 mb-2">Bot de Inteligencia Artificial</h3>
+                   <p className="text-slate-500 text-sm">Controla la personalidad del bot y sus disparadores automáticos (triggers).</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={botEnabled} onChange={e => setBotEnabled(e.target.checked)} className="sr-only peer" />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <span className="ml-3 text-sm font-bold text-slate-800">{botEnabled ? 'Activado' : 'Apagado'}</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Palabra Clave (Trigger)</label>
+                  <input type="text" value={botTrigger} onChange={e => setBotTrigger(e.target.value)} placeholder="Ej: asistente, edge" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-white/5">
-                <h3 className="text-xl font-bold text-white mb-2">Inteligencia Artificial</h3>
-                <p className="text-slate-400 text-sm mb-6">Ajustá las instrucciones (prompt) que la IA usa para resumir el historial de clientes.</p>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Prompt de Resumen</label>
-                  <textarea rows={4} value={settings.ai_prompt_resumen} onChange={e => setSettings({...settings, ai_prompt_resumen: e.target.value})} onBlur={() => saveSetting('ai_prompt_resumen', settings.ai_prompt_resumen)} className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 focus:border-[#00FF88] focus:ring-1 focus:ring-[#00FF88] focus:outline-none transition-all resize-none font-mono" />
+              <div className="pt-6 border-t border-slate-100">
+                <h3 className="text-[14px] font-bold text-slate-800 mb-2">System Prompt Principal</h3>
+                <p className="text-[12px] text-slate-500 mb-4">Instrucciones vitales de cómo debe presentarse y pensar el asistente GPT cada vez que contesta.</p>
+                <textarea rows={10} value={botPrompt} onChange={e => setBotPrompt(e.target.value)} placeholder="Sos el asesor virtual de Neumáticos Gallo..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all resize-none shadow-sm" />
+              </div>
+
+              <div className="flex justify-end pt-2">
+                 <button onClick={saveBotConfig} disabled={botSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-6 py-3 rounded-xl shadow-md transition-all text-[12px]">
+                   {botSaving ? 'Guardando...' : 'Guardar y Aplicar Historial'}
+                 </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'utilidades' && (
+            <div className="animate-in fade-in space-y-6 max-h-[70vh] overflow-hidden flex flex-col">
+              <div className="shrink-0 mb-4">
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Utilidades y Auditoría</h3>
+                <p className="text-slate-500 text-sm">Registro de cambios (logs) y sistema de reversionado de prompts de IA.</p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl flex-1 flex flex-col overflow-hidden">
+                <div className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                  <h4 className="text-[14px] font-bold text-slate-800 flex items-center"><History className="w-4 h-4 mr-2 text-blue-500" /> Historial de Prompts (Reversionado)</h4>
+                  <span className="text-[11px] bg-blue-50 text-blue-600 font-bold px-3 py-1 rounded-full border border-blue-200">{promptHistory.length} registros</span>
                 </div>
+                
+                {fetchingHistory ? (
+                  <div className="p-12 text-center text-slate-400 font-mono tracking-widest uppercase text-[12px]"><RefreshCw className="w-6 h-6 mx-auto animate-spin mb-3 text-blue-500/50" /> Leyendo base de datos...</div>
+                ) : promptHistory.length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 font-medium text-[13px]">No hay registros históricos aún.</div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                     <div className="divide-y divide-slate-200">
+                        {promptHistory.map((hist, i) => (
+                           <div key={hist.id || i} className="p-6 hover:bg-white transition-colors group">
+                              <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                   <div className="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-[13px] font-bold text-blue-700 shadow-sm">{hist.username?.charAt(0) || 'A'}</div>
+                                   <div>
+                                     <p className="text-[14px] font-bold text-slate-800">{hist.username || 'Admin'}</p>
+                                     <p className="text-[11px] text-slate-500 font-mono uppercase tracking-wider">{new Date(hist.created_at).toLocaleString('es-AR')}</p>
+                                   </div>
+                                </div>
+                                <button onClick={() => handleRollbackPrompt(hist.old_prompt)} className="opacity-0 group-hover:opacity-100 bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-700 text-[11px] font-bold px-4 py-2 rounded-lg flex items-center transition-all shadow-sm border border-blue-200 uppercase tracking-widest">
+                                  <RotateCcw className="w-3.5 h-3.5 mr-2" /> Revertir Cambios
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-6 mt-4">
+                                 <div>
+                                   <p className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-widest flex items-center"><X className="w-3 h-3 text-red-500 mr-2" /> Prompt Anterior</p>
+                                   <div className="bg-white text-slate-600 text-[12px] p-4 rounded-xl border border-slate-200 h-[160px] overflow-y-auto font-mono whitespace-pre-wrap shadow-sm">{hist.old_prompt || '(Vacío)'}</div>
+                                 </div>
+                                 <div>
+                                   <p className="text-[10px] font-bold text-emerald-600 mb-2 uppercase tracking-widest flex items-center"><Check className="w-3 h-3 text-emerald-500 mr-2" /> Prompt Modificado</p>
+                                   <div className="bg-emerald-50 text-emerald-700 text-[12px] p-4 rounded-xl border border-emerald-200 h-[160px] overflow-y-auto font-mono whitespace-pre-wrap shadow-sm">{hist.new_prompt}</div>
+                                 </div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3023,20 +3171,20 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
           {activeTab === 'whatsapp' && (
             <div className="animate-in fade-in space-y-6">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">Conexión con BuilderBot</h3>
-                <p className="text-slate-400 text-sm mb-6">Estado del proveedor de WhatsApp oficial (Cloud API v2).</p>
-                <div className="bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Conexión con BuilderBot</h3>
+                <p className="text-slate-500 text-sm mb-6">Estado del proveedor de WhatsApp oficial (Cloud API v2).</p>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-[#00FF88]/20 flex items-center justify-center border border-[#00FF88]/30">
-                      <MessageSquare className="w-6 h-6 text-[#00FF88]" />
+                    <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center border border-blue-200">
+                      <MessageSquare className="w-6 h-6 text-blue-600" />
                     </div>
                     <div>
-                      <h4 className="text-white font-bold text-base">API Conectada</h4>
-                      <p className="text-slate-400 text-sm font-mono mt-1">Host: app.builderbot.cloud</p>
+                      <h4 className="text-slate-800 font-bold text-base">API Conectada</h4>
+                      <p className="text-slate-500 text-sm font-mono mt-1">Host: app.builderbot.cloud</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-[11px] font-bold uppercase">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 border border-green-200 text-green-700 text-[11px] font-bold uppercase">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                     En línea
                   </div>
                 </div>
@@ -3047,11 +3195,11 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
           {activeTab === 'seguimientos' && (
             <div className="animate-in fade-in space-y-6">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">Periodos de Seguimiento</h3>
-                <p className="text-slate-400 text-sm mb-6">Definí los intervalos rápidos que se sugieren al agendar una alerta.</p>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Periodos de Seguimiento</h3>
+                <p className="text-slate-500 text-sm mb-6">Definí los intervalos rápidos que se sugieren al agendar una alerta.</p>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Días Sugeridos (Separados por coma)</label>
-                  <input type="text" value={settings.seguimiento_dias} onChange={e => setSettings({...settings, seguimiento_dias: e.target.value})} onBlur={() => saveSetting('seguimiento_dias', settings.seguimiento_dias)} placeholder="Ej: 30, 60, 90" className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 focus:border-[#00FF88] focus:ring-1 focus:ring-[#00FF88] focus:outline-none transition-all" />
+                  <input type="text" value={settings.seguimiento_dias} onChange={e => setSettings({...settings, seguimiento_dias: e.target.value})} onBlur={() => saveSetting('seguimiento_dias', settings.seguimiento_dias)} placeholder="Ej: 30, 60, 90" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
                 </div>
               </div>
             </div>
@@ -3059,13 +3207,13 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
 
           {activeTab === 'equipo' && (
             <div className="animate-in fade-in space-y-6 text-center py-12">
-              <Users className="w-20 h-20 text-slate-800 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-white mb-2">Gestión de Perfiles y Roles</h3>
-              <p className="text-slate-400 text-sm max-w-lg mx-auto">
+              <Users className="w-20 h-20 text-slate-300 mx-auto mb-6" />
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">Gestión de Perfiles y Roles</h3>
+              <p className="text-slate-500 text-sm max-w-lg mx-auto">
                 Los usuarios (Vendedores/Admins) se dan de alta directamente a través del panel de Supabase Auth para mantener la integridad criptográfica de las contraseñas.
               </p>
               <div className="mt-8 flex justify-center">
-                <a href="https://supabase.com/dashboard/project/_/auth/users" target="_blank" rel="noreferrer" className="bg-red-500 text-white px-6 py-3 rounded-full text-[14px] font-bold hover:bg-[#00E67A] transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(0,255,136,0.4)]">
+                <a href="https://supabase.com/dashboard/project/_/auth/users" target="_blank" rel="noreferrer" className="bg-red-50 text-red-600 border border-red-200 px-6 py-3 rounded-full text-[14px] font-bold hover:bg-red-500 hover:text-white transition-colors flex items-center gap-2 shadow-sm">
                   Ir a Supabase Auth <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
@@ -3074,10 +3222,10 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
 
           {activeTab === 'apariencia' && (
             <div className="animate-in fade-in space-y-6 text-center py-12">
-              <Sparkles className="w-20 h-20 text-slate-800 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-white mb-2">Diseño Premium</h3>
-              <p className="text-slate-400 text-sm max-w-lg mx-auto">
-                El entorno está actualmente configurado en el sistema de diseño <strong>GrowLabs Ultra-Dark</strong> (Premium Powerhouse). Este tema asegura el menor desgaste visual y la máxima concentración operativa.
+              <Sparkles className="w-20 h-20 text-blue-300 mx-auto mb-6" />
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">Diseño Estándar Ligero</h3>
+              <p className="text-slate-500 text-sm max-w-lg mx-auto">
+                El entorno está actualmente configurado en el sistema de diseño <strong>Light Standard</strong>. Este tema asegura armonía con el resto de los componentes y una experiencia fluida.
               </p>
             </div>
           )}
@@ -3086,33 +3234,32 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
             <div className="animate-in fade-in h-max">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <h3 className="text-xl font-bold text-white">Plantillas Rápidas</h3>
-                  <p className="text-slate-400 text-sm mt-1">Configurá fragmentos que te ahorrarán tiempo de tipear al chatear.</p>
+                  <h3 className="text-xl font-bold text-slate-800">Plantillas Rápidas</h3>
+                  <p className="text-slate-500 text-sm mt-1">Configurá fragmentos que te ahorrarán tiempo de tipear al chatear.</p>
                 </div>
-                <div className="bg-[#1A1A1A] border border-white/5 rounded-lg px-4 py-2 flex items-center shadow-inner">
-                  <span className="text-sm font-medium text-slate-400 mr-4">{templates.length} plantillas</span>
-                  <div className="h-6 w-px bg-white/10 mr-4"></div>
-                  <Package className="w-4 h-4 text-slate-500" />
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 flex items-center shadow-sm">
+                  <span className="text-sm font-medium text-slate-600 mr-4">{templates.length} plantillas</span>
+                  <div className="h-6 w-px bg-slate-200 mr-4"></div>
+                  <Package className="w-4 h-4 text-slate-400" />
                 </div>
               </div>
 
               <div className="grid grid-cols-12 gap-8">
                 {/* Formulario Nueva */}
                 <div className="col-span-12 lg:col-span-5 relative">
-                  <div className="bg-[#1A1A1A]/80 backdrop-blur-xl rounded-2xl p-6 border border-white/5 sticky top-6 shadow-xl relative z-10 overflow-hidden">
-                    <div className="absolute top-0 right-0 w-[200px] h-[200px] bg-blue-600/10 rounded-full blur-[80px] -z-10 pointer-events-none"></div>
-                    <h3 className="text-[14px] font-bold text-white mb-5 flex items-center gap-2">
-                      <PenLine className="w-4 h-4 text-blue-400" />
+                  <div className="bg-white rounded-2xl p-6 border border-slate-200 sticky top-6 shadow-sm relative z-10 overflow-hidden">
+                    <h3 className="text-[14px] font-bold text-slate-800 mb-5 flex items-center gap-2">
+                      <PenLine className="w-4 h-4 text-blue-500" />
                       Crear nueva
                     </h3>
                     <div className="space-y-4">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Comando rápido</label>
-                        <input type="text" value={newTemplate.shortcut} onChange={e => setNewTemplate({...newTemplate, shortcut: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-[14px] font-bold text-blue-400 focus:border-blue-500 focus:outline-none transition-all" />
+                        <input type="text" value={newTemplate.shortcut} onChange={e => setNewTemplate({...newTemplate, shortcut: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] font-bold text-blue-600 focus:border-blue-500 focus:outline-none transition-all" />
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Categoría</label>
-                        <select value={newTemplate.category} onChange={e => setNewTemplate({...newTemplate, category: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-slate-300 focus:border-blue-500 focus:outline-none transition-all">
+                        <select value={newTemplate.category} onChange={e => setNewTemplate({...newTemplate, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[14px] text-slate-700 focus:border-blue-500 focus:outline-none transition-all">
                           <option>General</option>
                           <option>Seguimiento</option>
                           <option>Ventas</option>
@@ -3124,7 +3271,7 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                         <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Mensaje e incrustaciones</label>
                         <div className="flex flex-wrap gap-2 mb-3">
                           {['nombre', 'productos', 'importe', 'fecha'].map(vr => (
-                            <button key={vr} onClick={() => setNewTemplate({...newTemplate, body: newTemplate.body + `{{${vr}}}`})} className="bg-[#0A0A0A] border border-white/10 px-3 py-1.5 rounded-lg text-blue-400 text-[11px] font-bold hover:border-blue-400 hover:bg-blue-900/20 transition-colors">
+                            <button key={vr} onClick={() => setNewTemplate({...newTemplate, body: newTemplate.body + `{{${vr}}}`})} className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-blue-600 text-[11px] font-bold hover:border-blue-400 hover:bg-blue-50 transition-colors">
                               {`{{${vr}}}`}
                             </button>
                           ))}
@@ -3134,7 +3281,7 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                           value={newTemplate.body}
                           onChange={e => setNewTemplate({...newTemplate, body: e.target.value})}
                           placeholder="Hola {{nombre}}, ¿En qué te puedo ayudar?"
-                          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-[13px] text-slate-300 focus:border-blue-500 focus:outline-none resize-none transition-all"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[13px] text-slate-700 focus:border-blue-500 focus:outline-none resize-none transition-all"
                         />
                         <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500 font-medium">
                           <span>{newTemplate.body.length} caracteres</span>
@@ -3154,24 +3301,24 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                 {/* Lista Existentes */}
                 <div className="col-span-12 lg:col-span-7 space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                   {templates.length === 0 ? (
-                    <div className="border border-white/5 bg-[#1A1A1A]/30 rounded-2xl p-12 text-center">
-                      <FileText className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-                      <p className="text-[14px] font-bold text-slate-300">Aún no hay plantillas creadas.</p>
-                      <p className="text-[13px] text-slate-500 mt-1">Usá el formulario lateral para agregar tu primer atajo.</p>
+                    <div className="border border-slate-200 bg-slate-50 rounded-2xl p-12 text-center">
+                      <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                      <p className="text-[14px] font-bold text-slate-600">Aún no hay plantillas creadas.</p>
+                      <p className="text-[13px] text-slate-400 mt-1">Usá el formulario lateral para agregar tu primer atajo.</p>
                     </div>
                   ) : (
                     templates.map((t, idx) => (
-                      <div key={idx} className="bg-[#1A1A1A] border border-white/5 rounded-2xl p-5 hover:border-blue-500/30 hover:bg-[#1A1A1A]/80 transition-all group">
+                      <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-300 hover:bg-blue-50/50 transition-all shadow-sm group">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-3">
-                            <span className="text-[14px] font-extrabold text-blue-400 bg-blue-500/10 px-3 py-1 rounded-lg tracking-wider border border-blue-500/20">{t.shortcut}</span>
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide bg-black border border-white/10 px-2 py-1 rounded-md">{t.category}</span>
+                            <span className="text-[14px] font-extrabold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg tracking-wider border border-blue-200">{t.shortcut}</span>
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide bg-slate-100 border border-slate-200 px-2 py-1 rounded-md">{t.category}</span>
                           </div>
-                          <button onClick={async (e) => { e.stopPropagation(); await supabase.from('ng_templates').delete().eq('id', t.id); fetchTemplates(); }} className="p-2 text-red-500/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all">
+                          <button onClick={async (e) => { e.stopPropagation(); await supabase.from('ng_templates').delete().eq('id', t.id); fetchTemplates(); }} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                           </button>
                         </div>
-                        <p className="text-[13px] text-slate-300 leading-relaxed font-light mt-4 pl-1 border-l-2 border-white/10 group-hover:border-blue-500/50 transition-colors">{t.body}</p>
+                        <p className="text-[13px] text-slate-600 leading-relaxed font-medium mt-4 pl-1 border-l-2 border-slate-200 group-hover:border-blue-400 transition-colors">{t.body}</p>
                       </div>
                     ))
                   )}
