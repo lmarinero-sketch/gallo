@@ -295,6 +295,9 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
           const openaiData = await openaiRes.json();
           let aiResponse = openaiData.choices?.[0]?.message?.content || '';
           
+          // Fuerza bruta contra el Markdown de GPT que WhatsApp no soporta
+          aiResponse = aiResponse.replace(/#+\s*/g, '');
+          
           console.log(`GPT respondió (${aiResponse.length} chars): ${aiResponse.substring(0, 100)}...`);
 
           if (aiResponse) {
