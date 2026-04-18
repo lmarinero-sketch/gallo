@@ -116,8 +116,18 @@ serve(async (req) => {
       }, { onConflict: 'phone' }).select();
     }
 
-    // ── Deduplicación para outgoing ──
+    // ── Intervención Humana (Auto-Pause) & Deduplicación para outgoing ──
     if (isOutgoing && body) {
+      
+      // Si el mensaje saliente NO tiene nuestra marca de agua invisible (Zero-Width Space \u200B)
+      // Significa que fue enviado por un humano desde el CRM o desde su celular
+      if (!body.includes('\u200B')) {
+        console.log("=== EDGE BOT: INTERVENCIÓN HUMANA DETECTADA. Pausando bot por el resto del día ===");
+        const midnight = new Date();
+        midnight.setHours(23, 59, 59, 999);
+        await supabase.from('ng_clients').update({ bot_paused_until: midnight.toISOString() }).eq('phone', phone);
+      }
+
       const { data: recentMsg } = await supabase
         .from('ng_whatsapp_messages')
         .select('id')
@@ -348,6 +358,9 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
           
           // Fuerza bruta contra el Markdown de GPT que WhatsApp no soporta
           aiResponse = aiResponse.replace(/#+\s*/g, '');
+          
+          // Marca de agua invisible (Zero-Width Space) para demostrar que fue enviado por IA
+          aiResponse += '\u200B';
           
           console.log(`GPT respondió (${aiResponse.length} chars): ${aiResponse.substring(0, 100)}...`);
 
