@@ -889,6 +889,7 @@ function Messenger() {
   const [botEnabled, setBotEnabled] = useState(true);
   const [botTrigger, setBotTrigger] = useState('edge');
   const [botPrompt, setBotPrompt] = useState('');
+  const [originalBotPrompt, setOriginalBotPrompt] = useState('');
   const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [botSaving, setBotSaving] = useState(false);
   const [showBotHelp, setShowBotHelp] = useState(false);
@@ -902,6 +903,7 @@ function Messenger() {
       setBotEnabled(map['bot_enabled'] === 'true');
       setBotTrigger(map['bot_trigger'] || '');
       setBotPrompt(map['system_prompt'] || '');
+      setOriginalBotPrompt(map['system_prompt'] || '');
     } catch (e) { console.error(e); }
     setBotConfigLoading(false);
     fetchProductCount();
@@ -916,12 +918,24 @@ function Messenger() {
         { key: 'system_prompt', value: botPrompt }
       ];
       for (const u of upserts) {
-        await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+        const { error } = await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
+        if (error) throw error;
       }
+
+      if (originalBotPrompt !== botPrompt) {
+        const { error } = await supabase.from('ng_prompt_history').insert({
+          old_prompt: originalBotPrompt,
+          new_prompt: botPrompt,
+          username: localStorage.getItem('crm_username') || 'Admin'
+        });
+        if (error) throw error;
+        setOriginalBotPrompt(botPrompt);
+      }
+
       showSystemModal('Bot IA', 'Configuración guardada. Los cambios se aplican en tiempo real.', 'success');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showSystemModal('Error', 'No se pudo guardar la configuración.', 'error');
+      showSystemModal('Error', e.message || 'No se pudo guardar la configuración.', 'error');
     }
     setBotSaving(false);
   };
@@ -2897,6 +2911,7 @@ function Clients() {
 }
 
 function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, userRole: string | null }) {
+  const { showSystemModal } = React.useContext(AppContext);
   const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2964,10 +2979,10 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
         setOriginalBotPrompt(botPrompt);
         fetchPromptHistory(); // Auto-refresh history
       }
-      alert("Configuración de IA Guardada!");
+      showSystemModal("¡Éxito!", "Configuración de IA Guardada correctamente.", "success");
     } catch (e: any) { 
       console.error(e);
-      alert("Error al guardar: " + (e.message || "Verifica la base de datos"));
+      showSystemModal("Error al guardar", e.message || "Verifica la base de datos.", "error");
     }
     setBotSaving(false);
   };
