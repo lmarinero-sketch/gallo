@@ -1804,11 +1804,15 @@ function Messenger() {
                       </div>
 
                       {/* Save Button */}
-                      <div className="flex justify-end pt-2">
+                      <div className="flex items-center justify-between pt-2">
+                        <button onClick={() => setBotPrompt(originalBotPrompt)} disabled={botPrompt === originalBotPrompt} className={`px-4 py-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center ${botPrompt !== originalBotPrompt ? 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 hover:text-amber-700 shadow-sm' : 'bg-slate-50 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'}`}>
+                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                          Deshacer Cambios (Volver Atrás)
+                        </button>
                         <button 
                           onClick={saveBotConfig} 
                           disabled={botSaving}
-                          className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-[12px] font-bold px-6 py-2.5 rounded-lg transition-colors flex items-center"
+                          className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-[12px] font-bold px-6 py-2.5 rounded-lg transition-colors flex items-center shadow-sm"
                         >
                           {botSaving ? <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-2" />}
                           {botSaving ? 'Guardando...' : 'Guardar Configuración'}
