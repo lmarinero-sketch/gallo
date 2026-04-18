@@ -772,6 +772,11 @@ function Messenger() {
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
   
   // Edición
   const [isEditingClient, setIsEditingClient] = useState(false);
@@ -1255,6 +1260,10 @@ function Messenger() {
   };
 
   const activeMessages = messages.filter(m => m.client_phone === activeContact).reverse();
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [activeContact, activeMessages]);
 
   const is24hExpired = React.useMemo(() => {
     if (!activeMessages || activeMessages.length === 0) return true;
@@ -1910,6 +1919,7 @@ function Messenger() {
                   </div>
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="relative z-20">
