@@ -238,8 +238,10 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
       console.log(`Bot enabled: ${botEnabled}, TriggerConfig: "${botTriggerConfig}"`);
 
       // Verificar si debe activarse (para pruebas locales o activador manual global si existiese)
+      // BYPASS: Si es multimedia (audio/imagen), omitimos la palabra clave para mejor UX
+      const isMedia = attachmentUrls && attachmentUrls.length > 0;
       const messageContainsTrigger = botTriggerConfig 
-        ? bodyText.toLowerCase().includes(botTriggerConfig) 
+        ? (bodyText.toLowerCase().includes(botTriggerConfig) || isMedia) 
         : true;
 
       if (botEnabled && systemPrompt && messageContainsTrigger) {
