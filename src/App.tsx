@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -758,6 +758,7 @@ function UploadInvoice() {
 }
 
 function Messenger() {
+  const navigate = useNavigate();
   const { isSidebarOpen, showSystemModal } = React.useContext(AppContext);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1414,10 +1415,14 @@ function Messenger() {
                 <button
                   key={tab.key}
                   onClick={() => {
+                    if (tab.key === 'bot-ia') {
+                      navigate('/configuracion', { state: { tab: 'bot-ia' } });
+                      setShowSettings(false);
+                      return;
+                    }
                     setSettingsTab(tab.key as any);
                     if (tab.key === 'blacklist') fetchBlacklist();
                     if (tab.key === 'wa-templates') fetchWaTemplates();
-                    if (tab.key === 'bot-ia') fetchBotConfig();
                   }}
                   className={`px-4 py-3 text-[12px] font-bold border-b-2 transition-colors ${
                     settingsTab === tab.key 
@@ -2911,8 +2916,9 @@ function Clients() {
 }
 
 function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, userRole: string | null }) {
+  const location = useLocation();
   const { showSystemModal } = React.useContext(AppContext);
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'general');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
