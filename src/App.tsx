@@ -769,6 +769,32 @@ function Messenger() {
   const [page, setPage] = useState(0);
   const [copilotData, setCopilotData] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [fuReason, setFuReason] = useState('Seguimiento general');
+  const [fuDate, setFuDate] = useState('');
+  const [fuObservations, setFuObservations] = useState('');
+
+  const handleScheduleFollowUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!activeContactInfo?.id || !fuDate) return;
+    try {
+      const { error } = await supabase.from('ng_follow_ups').insert({
+        client_id: activeContactInfo.id,
+        reason: fuReason,
+        scheduled_date: fuDate,
+        observations: fuObservations
+      });
+      if(error) throw error;
+      showSystemModal('Éxito', 'Seguimiento programado correctamente.', 'success');
+      setShowFollowUpModal(false);
+      setFuReason('Seguimiento general');
+      setFuDate('');
+      setFuObservations('');
+    } catch(err: any) {
+      console.error(err);
+      showSystemModal('Error', 'No se pudo agendar el seguimiento.', 'error');
+    }
+  };
   const PAGE_SIZE = 1500;
   
   const [activeContact, setActiveContact] = useState<string | null>(null);
@@ -1922,7 +1948,7 @@ function Messenger() {
       </div>
 
       {/* RIGHT SIDE PANEL: Facturas Asociadas */}
-      {activeContact && (activeContactInfo?.invoices?.length > 0 || copilotData) && (
+      {activeContact && (
         <div className="w-[320px] bg-white text-slate-800 flex flex-col shrink-0 overflow-y-auto border-l border-slate-200 relative z-20">
           <div className="p-8 flex flex-col items-center border-b border-slate-100 bg-slate-50">
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center font-bold text-xl uppercase text-blue-600 mb-4 shadow-sm border border-blue-200">
@@ -1960,9 +1986,7 @@ function Messenger() {
                   </button>
 
                   <button 
-                    onClick={() => {
-                      alert("Para agendar un seguimiento automático, ve a la pestaña 'Follow Ups' / Seguimientos en el panel lateral principal.");
-                    }}
+                    onClick={() => setShowFollowUpModal(true)}
                     className="flex items-center text-left bg-white border border-slate-200 hover:border-green-400 hover:bg-green-50 text-[11px] font-bold text-slate-700 px-3 py-2 rounded-lg transition-colors shadow-sm"
                   >
                     <span className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2"><Clock className="w-3.5 h-3.5" /></span>
