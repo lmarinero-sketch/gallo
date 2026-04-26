@@ -426,7 +426,7 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
           // No romper el webhook por un error del bot
         }
       } else {
-        console.log(`Edge Bot inactivo. enabled=${botEnabled}, trigger="${botTrigger}", contains=${messageContainsTrigger}`);
+        console.log(`Edge Bot inactivo. enabled=${botEnabled}, trigger="${botTriggerConfig}", contains=${messageContainsTrigger}`);
       }
     }
 

@@ -24,6 +24,8 @@ import {
   Menu,
   User,
   Sparkles,
+  BrainCircuit,
+  Zap,
   AlertTriangle,
   AlertCircle,
   Info,
@@ -765,6 +767,8 @@ function Messenger() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
+  const [copilotData, setCopilotData] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const PAGE_SIZE = 1500;
   
   const [activeContact, setActiveContact] = useState<string | null>(null);
@@ -883,128 +887,6 @@ function Messenger() {
     setShowSettings(true);
     if (tab === 'blacklist') fetchBlacklist();
     if (tab === 'wa-templates') fetchWaTemplates();
-    if (tab === 'bot-ia') fetchBotConfig();
-  };
-
-  // Bot IA Config
-  const [botEnabled, setBotEnabled] = useState(true);
-  const [botTrigger, setBotTrigger] = useState('edge');
-  const [botPrompt, setBotPrompt] = useState('');
-  const [originalBotPrompt, setOriginalBotPrompt] = useState('');
-  const [botConfigLoading, setBotConfigLoading] = useState(false);
-  const [botSaving, setBotSaving] = useState(false);
-  const [showBotHelp, setShowBotHelp] = useState(false);
-
-  const fetchBotConfig = async () => {
-    setBotConfigLoading(true);
-    try {
-      const { data } = await supabase.from('ng_bot_config').select('key, value');
-      const map: Record<string, string> = {};
-      (data || []).forEach((c: any) => { map[c.key] = c.value; });
-      setBotEnabled(map['bot_enabled'] === 'true');
-      setBotTrigger(map['bot_trigger'] || '');
-      setBotPrompt(map['system_prompt'] || '');
-      setOriginalBotPrompt(map['system_prompt'] || '');
-    } catch (e) { console.error(e); }
-    setBotConfigLoading(false);
-    fetchProductCount();
-  };
-
-  const saveBotConfig = async () => {
-    setBotSaving(true);
-    try {
-      const upserts = [
-        { key: 'bot_enabled', value: botEnabled ? 'true' : 'false' },
-        { key: 'bot_trigger', value: botTrigger },
-        { key: 'system_prompt', value: botPrompt }
-      ];
-      for (const u of upserts) {
-        const { error } = await supabase.from('ng_bot_config').upsert(u, { onConflict: 'key' });
-        if (error) throw error;
-      }
-
-      if (originalBotPrompt !== botPrompt) {
-        const { error } = await supabase.from('ng_prompt_history').insert({
-          old_prompt: originalBotPrompt,
-          new_prompt: botPrompt,
-          username: localStorage.getItem('crm_username') || 'Admin'
-        });
-        if (error) throw error;
-        setOriginalBotPrompt(botPrompt);
-      }
-
-      showSystemModal('Bot IA', 'Configuración guardada. Los cambios se aplican en tiempo real.', 'success');
-    } catch (e: any) {
-      console.error(e);
-      showSystemModal('Error', e.message || 'No se pudo guardar la configuración.', 'error');
-    }
-    setBotSaving(false);
-  };
-
-  // Products Catalog
-  const [productCount, setProductCount] = useState(0);
-  const [productUploading, setProductUploading] = useState(false);
-
-  const fetchProductCount = async () => {
-    const { count } = await supabase.from('ng_products').select('*', { count: 'exact', head: true });
-    setProductCount(count || 0);
-  };
-
-  const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProductUploading(true);
-    
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-
-      const products: any[] = [];
-      for (let i = 5; i < data.length; i++) {
-        const row = data[i];
-        if (!row || !row[0] || row[0] === 'Grand Total') continue;
-        
-        const code = String(row[0]).trim();
-        const altCode = row[3] ? String(row[3]).trim() : null;
-        const fullName = row[7] ? String(row[7]).trim() : '';
-        const price = typeof row[10] === 'number' ? row[10] : parseFloat(row[10]) || 0;
-        const stock = typeof row[13] === 'number' ? row[13] : parseInt(row[13]) || 0;
-
-        const brandMatch = fullName.match(/^N\.\s+(\S+)/);
-        const brand = brandMatch ? brandMatch[1] : '';
-        const measureMatch = fullName.match(/(\d{2,3}\/\d{2,3}\s*R\s*\d{2,3})/i);
-        const measure = measureMatch ? measureMatch[1].replace(/\s+/g, '') : '';
-
-        if (code && fullName) {
-          products.push({ code, alt_code: altCode, name: fullName, brand, measure, price, stock });
-        }
-      }
-
-      if (products.length === 0) {
-        showSystemModal('Error', 'No se encontraron productos en el archivo. Verificá el formato.', 'error');
-        setProductUploading(false);
-        return;
-      }
-
-      // Clear and re-upload
-      await supabase.from('ng_products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // Upload in batches of 50
-      for (let i = 0; i < products.length; i += 50) {
-        const batch = products.slice(i, i + 50);
-        await supabase.from('ng_products').insert(batch);
-      }
-
-      setProductCount(products.length);
-      showSystemModal('Catálogo Actualizado', `Se importaron ${products.length} productos correctamente. El bot ya tiene acceso a los precios actualizados.`, 'success');
-    } catch (err: any) {
-      console.error('Error uploading products:', err);
-      showSystemModal('Error', 'Error procesando el archivo: ' + err.message, 'error');
-    }
-    setProductUploading(false);
-    e.target.value = '';
   };
 
   useEffect(() => {
@@ -1049,6 +931,7 @@ function Messenger() {
   useEffect(() => {
     if (activeContact) {
       loadContactInfo(activeContact);
+      setCopilotData(null);
     }
   }, [activeContact]);
 
@@ -1080,6 +963,24 @@ function Messenger() {
         setTemplates(data);
       }
     } catch (e) {
+    }
+  };
+
+  const analyzeChat = async () => {
+    if (!activeContact) return;
+    setIsAnalyzing(true);
+    try {
+      const tenMessages = activeMessages.slice(0, 15);
+      const { data, error } = await supabase.functions.invoke('sales-copilot', {
+        body: { phone: activeContact, messages: tenMessages.reverse() }
+      });
+      if (error) throw error;
+      setCopilotData(data);
+    } catch (e: any) {
+      console.error(e);
+      showSystemModal("Error del Copiloto", "No se pudo analizar el chat: " + e.message, "error");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -1672,175 +1573,7 @@ function Messenger() {
                 </div>
               )}
 
-              {/* ── TAB: Bot IA ── */}
-              {settingsTab === 'bot-ia' && (
-                <div>
-                  {botConfigLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mr-2" />
-                      <span className="text-[13px] text-slate-400">Cargando configuración del bot...</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Toggle + Trigger */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <h3 className="text-[14px] font-bold text-slate-800">Edge Bot IA</h3>
-                            <button 
-                              onClick={() => setShowBotHelp(!showBotHelp)}
-                              className={`transition-colors focus:outline-none p-1 rounded-full ${showBotHelp ? 'text-blue-600 bg-blue-100' : 'text-slate-400 hover:text-blue-500 bg-slate-100 hover:bg-blue-50'}`}
-                              title="¿Cómo funciona el bot?"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <p className="text-[12px] text-slate-400 mt-0.5">Bot con inteligencia artificial que responde automáticamente vía GPT</p>
-                        </div>
-                        <button 
-                          onClick={async () => {
-                            const newState = !botEnabled;
-                            setBotEnabled(newState);
-                            try {
-                              await supabase.from('ng_bot_config').upsert({ key: 'bot_enabled', value: newState ? 'true' : 'false' }, { onConflict: 'key' });
-                            } catch (e) {
-                              console.error(e);
-                            }
-                          }}
-                          className={`relative w-12 h-6 rounded-full transition-colors ${botEnabled ? 'bg-green-500' : 'bg-slate-300'}`}
-                        >
-                          <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${botEnabled ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
-                        </button>
-                      </div>
 
-                      {/* Info Panel Desplegable */}
-                      {showBotHelp && (
-                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 text-[12px] text-slate-700 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                          <p className="font-bold text-blue-800 flex items-center mb-2"><Sparkles className="w-4 h-4 mr-1.5"/> ¿Cómo reacciona este Bot?</p>
-                          
-                          <div className="grid gap-3">
-                            <div className="bg-white p-3 rounded-lg border border-blue-50 shadow-sm">
-                              <h4 className="font-bold text-slate-800 flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5 text-green-500"/> Personalidad Auto-Adaptable</h4>
-                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Si el cliente envía un mensaje cortísimo ("Hola, precio?"), el bot entra en modo <b>Ejecutivo Express</b> y responde con algo muy directo. Si hace consultas muy técnicas o largas sobre medidas y rodados, activa su perfil de <b>Asesor Experto</b> para explayarse y ser persuasivo.</p>
-                            </div>
-                            
-                            <div className="bg-white p-3 rounded-lg border border-blue-50 shadow-sm">
-                              <h4 className="font-bold text-slate-800 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1.5 text-amber-500"/> Pase a Humano (Pausa Automática)</h4>
-                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">En el exacto momento en que el bot lea una intención de hablar con alguien "real" (ej: "pasame con un vendedor"), mandará un mensaje de derivación amigable y <b>se silenciará a sí mismo por 24 horas continuas</b> para no molestar tus ventas.</p>
-                            </div>
-                            
-                            <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 shadow-sm text-slate-300">
-                              <h4 className="font-bold text-white flex items-center"><RefreshCw className="w-3.5 h-3.5 mr-1.5 text-blue-400"/> Reactivación Manual</h4>
-                              <p className="text-[11px] mt-1 leading-relaxed">Si durante las 24 hs de silencio quieres que la IA vuelva al rescate en la charla, simplemente el cliente debe escribir la palabra mágica <code className="bg-slate-900 px-1.5 py-0.5 rounded text-green-400 font-mono">ASISTENTE</code>, y el bot retomará la sesión al instante.</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Trigger Word */}
-                      <div>
-                        <label className="text-[12px] font-bold text-slate-600 block mb-1.5">Palabra Clave de Activación</label>
-                        <p className="text-[11px] text-slate-400 mb-2">El bot solo responderá cuando el mensaje contenga esta palabra. Dejá vacío para responder siempre.</p>
-                        <input 
-                          type="text" 
-                          value={botTrigger} 
-                          onChange={e => setBotTrigger(e.target.value)}
-                          placeholder="Ej: edge (vacío = responde siempre)" 
-                          className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[13px] focus:border-blue-400 focus:outline-none bg-white font-mono"
-                        />
-                      </div>
-
-                      {/* System Prompt Editor */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-[12px] font-bold text-slate-600">System Prompt (Instrucciones del Bot)</label>
-                          <span className="text-[10px] text-slate-400">{botPrompt.length} caracteres</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mb-2">Este es el prompt que define la personalidad, conocimiento y comportamiento del bot. Los cambios se aplican en tiempo real.</p>
-                        <textarea 
-                          value={botPrompt} 
-                          onChange={e => setBotPrompt(e.target.value)}
-                          rows={16}
-                          className="w-full border border-slate-200 rounded-xl px-4 py-3 text-[12px] leading-relaxed focus:border-blue-400 focus:outline-none bg-white resize-y font-mono"
-                          placeholder="Escribí las instrucciones del bot aquí..."
-                        />
-                      </div>
-
-                      {/* Catálogo de Precios */}
-                      <div className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <h3 className="text-[14px] font-bold text-slate-800 flex items-center">
-                              <Package className="w-4 h-4 mr-2 text-green-600" />
-                              Catálogo de Precios
-                            </h3>
-                            <p className="text-[11px] text-slate-400 mt-0.5">El bot usa estos precios para cotizar automáticamente</p>
-                          </div>
-                          <div className="bg-green-100 text-green-700 text-[12px] font-bold px-3 py-1.5 rounded-lg">
-                            {productCount} productos
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          <label className={`flex-1 flex items-center justify-center border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-all ${productUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
-                            <input 
-                              type="file" 
-                              accept=".xls,.xlsx" 
-                              onChange={handleProductUpload} 
-                              className="hidden" 
-                              disabled={productUploading}
-                            />
-                            {productUploading ? (
-                              <>
-                                <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
-                                <span className="text-[12px] text-blue-600 font-bold">Importando productos...</span>
-                              </>
-                            ) : (
-                              <>
-                                <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
-                                <div className="text-left">
-                                  <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
-                                  <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
-                                </div>
-                              </>
-                            )}
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Info box */}
-                      <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 flex items-start">
-                        <Sparkles className="w-4 h-4 text-blue-500 mr-3 mt-0.5 shrink-0" />
-                        <div className="text-[12px] text-blue-700">
-                          <p className="font-bold mb-1">¿Cómo funciona?</p>
-                          <ul className="list-disc list-inside space-y-0.5 text-[11px]">
-                            <li>Cuando un cliente envía un mensaje con la palabra clave, la Edge Function intercepta el mensaje</li>
-                            <li>Se arma el contexto con los últimos 20 mensajes de la conversación</li>
-                            <li>Se envía a GPT con este System Prompt</li>
-                            <li>La respuesta se envía automáticamente vía WhatsApp</li>
-                          </ul>
-                        </div>
-                      </div>
-
-                      {/* Save Button */}
-                      <div className="flex items-center justify-between pt-2">
-                        <button onClick={() => setBotPrompt(originalBotPrompt)} disabled={botPrompt === originalBotPrompt} className={`px-4 py-2.5 rounded-lg font-bold text-[11px] transition-all flex items-center ${botPrompt !== originalBotPrompt ? 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 hover:text-amber-700 shadow-sm' : 'bg-slate-50 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'}`}>
-                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                          Deshacer Cambios (Volver Atrás)
-                        </button>
-                        <button 
-                          onClick={saveBotConfig} 
-                          disabled={botSaving}
-                          className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white text-[12px] font-bold px-6 py-2.5 rounded-lg transition-colors flex items-center shadow-sm"
-                        >
-                          {botSaving ? <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-2" />}
-                          {botSaving ? 'Guardando...' : 'Guardar Configuración'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
             </div>
           </div>
@@ -1915,6 +1648,15 @@ function Messenger() {
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                   Resumir con IA
+                </button>
+                
+                <button 
+                  onClick={analyzeChat}
+                  disabled={isAnalyzing}
+                  className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-1.5 rounded-full text-[12px] font-bold shadow-sm transition-colors flex items-center border border-indigo-200"
+                >
+                  {isAnalyzing ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5 mr-1.5" />}
+                  {isAnalyzing ? 'Analizando...' : 'Copiloto IA'}
                 </button>
 
                 <div className="bg-slate-100/80 px-4 py-1.5 rounded-full text-[11px] font-bold text-slate-500 shadow-sm border border-slate-200">
@@ -2180,7 +1922,7 @@ function Messenger() {
       </div>
 
       {/* RIGHT SIDE PANEL: Facturas Asociadas */}
-      {activeContact && activeContactInfo?.invoices && activeContactInfo.invoices.length > 0 && (
+      {activeContact && (activeContactInfo?.invoices?.length > 0 || copilotData) && (
         <div className="w-[320px] bg-white text-slate-800 flex flex-col shrink-0 overflow-y-auto border-l border-slate-200 relative z-20">
           <div className="p-8 flex flex-col items-center border-b border-slate-100 bg-slate-50">
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center font-bold text-xl uppercase text-blue-600 mb-4 shadow-sm border border-blue-200">
@@ -2191,10 +1933,95 @@ function Messenger() {
           </div>
           
           <div className="p-6">
-            <h4 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] flex items-center mb-5 uppercase">
-              <Package className="w-3.5 h-3.5 mr-2" />
-              Facturas ({activeContactInfo.invoices.length})
-            </h4>
+            
+              <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <h4 className="text-[12px] font-bold text-slate-800 flex items-center mb-3">
+                  <Zap className="w-4 h-4 mr-1.5 text-amber-500" /> Acciones Rápidas
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  <button 
+                    onClick={() => {
+                      setNewMessage("¡Hola! Te dejo los datos de nuestra cuenta bancaria para realizar la transferencia:\n\nCBU: 00000031238918239123\nAlias: NEUMATICOS.GALLO\nBanco: Galicia\n\nPor favor, enviame el comprobante por acá cuando la realices. ¡Gracias!");
+                    }}
+                    className="flex items-center text-left bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-[11px] font-bold text-slate-700 px-3 py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2"><CheckCircle className="w-3.5 h-3.5" /></span>
+                    Enviar Datos Bancarios
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setNewMessage("/PRESUPUESTO");
+                    }}
+                    className="flex items-center text-left bg-white border border-slate-200 hover:border-purple-400 hover:bg-purple-50 text-[11px] font-bold text-slate-700 px-3 py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-2"><FileText className="w-3.5 h-3.5" /></span>
+                    Plantilla Presupuesto
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      alert("Para agendar un seguimiento automático, ve a la pestaña 'Follow Ups' / Seguimientos en el panel lateral principal.");
+                    }}
+                    className="flex items-center text-left bg-white border border-slate-200 hover:border-green-400 hover:bg-green-50 text-[11px] font-bold text-slate-700 px-3 py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2"><Clock className="w-3.5 h-3.5" /></span>
+                    Agendar Seguimiento
+                  </button>
+                </div>
+              </div>
+
+{copilotData && (
+              <div className="mb-6 bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-[12px] font-bold text-indigo-800 flex items-center">
+                    <BrainCircuit className="w-4 h-4 mr-1.5 text-indigo-600" /> Copiloto de Ventas
+                  </h4>
+                  <div className="flex items-center bg-white px-2 py-1 rounded-md border border-indigo-100 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-500 mr-1.5">Termómetro:</span>
+                    <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${copilotData.lead_score > 70 ? 'bg-green-500' : copilotData.lead_score > 40 ? 'bg-amber-500' : 'bg-red-500'}`} 
+                        style={{ width: `${copilotData.lead_score}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {copilotData.extracted_data && (
+                  <div className="mb-4 bg-white rounded-lg p-3 border border-indigo-100 text-[11px]">
+                    <p className="font-bold text-slate-700 mb-1 flex items-center"><Zap className="w-3 h-3 mr-1 text-amber-500" /> Datos Extraídos:</p>
+                    <div className="grid grid-cols-2 gap-2 text-slate-600">
+                      <div><span className="text-slate-400">Auto:</span> {copilotData.extracted_data.vehicle_model || '-'}</div>
+                      <div><span className="text-slate-400">Medida:</span> {copilotData.extracted_data.tire_size || '-'}</div>
+                      <div className="col-span-2"><span className="text-slate-400">Interés:</span> {copilotData.extracted_data.intent_summary || '-'}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[11px] font-bold text-slate-500 mb-2">Sugerencias de respuesta:</p>
+                  <div className="space-y-1.5">
+                    {copilotData.suggested_replies?.map((reply: string, idx: number) => (
+                      <button 
+                        key={idx}
+                        onClick={() => setNewMessage(reply)}
+                        className="w-full text-left bg-white hover:bg-indigo-600 hover:text-white hover:border-indigo-600 text-slate-700 text-[11px] p-2 rounded-lg border border-slate-200 transition-colors shadow-sm"
+                      >
+                        {reply}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeContactInfo?.invoices && activeContactInfo.invoices.length > 0 && (
+              <>
+                <h4 className="text-[11px] font-bold text-slate-400 tracking-[0.2em] flex items-center mb-5 uppercase">
+                  <Package className="w-3.5 h-3.5 mr-2" />
+                  Facturas ({activeContactInfo.invoices.length})
+                </h4>
             
             <div className="space-y-4">
               {activeContactInfo.invoices.map((inv: any, idx: number) => (
@@ -2232,6 +2059,8 @@ function Messenger() {
                 </div>
               ))}
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
@@ -2886,6 +2715,8 @@ function Clients() {
                 </div>
               ))}
             </div>
+            </>
+            )}
 
             {/* Follow-ups Section */}
             <div className="p-5 flex-shrink-0">
@@ -2908,6 +2739,8 @@ function Clients() {
                 </div>
               ))}
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
@@ -2930,6 +2763,8 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
   const [promptHistory, setPromptHistory] = useState<any[]>([]);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [botSaving, setBotSaving] = useState(false);
+  const [productCount, setProductCount] = useState(0);
+  const [productUploading, setProductUploading] = useState(false);
   
   // Settings State
   const [settings, setSettings] = useState<any>({
@@ -2948,7 +2783,74 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
     fetchTemplates();
     fetchBotConfig();
     fetchPromptHistory();
+    fetchProductCount();
   }, []);
+
+  const fetchProductCount = async () => {
+    try {
+      const { count } = await supabase.from('ng_products').select('*', { count: 'exact', head: true }).neq('id', '00000000-0000-0000-0000-000000000000');
+      setProductCount(count || 0);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProductUploading(true);
+    
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+      const products: any[] = [];
+      for (let i = 5; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0] || row[0] === 'Grand Total') continue;
+        
+        const code = String(row[0]).trim();
+        const altCode = row[3] ? String(row[3]).trim() : null;
+        const fullName = row[7] ? String(row[7]).trim() : '';
+        const price = typeof row[10] === 'number' ? row[10] : parseFloat(row[10]) || 0;
+        const stock = typeof row[13] === 'number' ? row[13] : parseInt(row[13]) || 0;
+
+        const brandMatch = fullName.match(/^N\.\s+(\S+)/);
+        const brand = brandMatch ? brandMatch[1] : '';
+        const measureMatch = fullName.match(/(\d{2,3}\/\d{2,3}\s*R\s*\d{2,3})/i);
+        const measure = measureMatch ? measureMatch[1].replace(/\s+/g, '') : '';
+
+        if (code && fullName) {
+          products.push({ code, alt_code: altCode, name: fullName, brand, measure, price, stock });
+        }
+      }
+
+      if (products.length === 0) {
+        showSystemModal('Error', 'No se encontraron productos en el archivo. Verificá el formato.', 'error');
+        setProductUploading(false);
+        return;
+      }
+
+      // Clear and re-upload
+      await supabase.from('ng_products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Upload in batches of 50
+      for (let i = 0; i < products.length; i += 50) {
+        const batch = products.slice(i, i + 50);
+        await supabase.from('ng_products').insert(batch);
+      }
+
+      setProductCount(products.length);
+      showSystemModal('Catálogo Actualizado', `Se importaron ${products.length} productos correctamente. El bot ya tiene acceso a los precios actualizados.`, 'success');
+    } catch (err: any) {
+      console.error('Error uploading products:', err);
+      showSystemModal('Error', 'Error procesando el archivo: ' + err.message, 'error');
+    }
+    setProductUploading(false);
+    e.target.value = '';
+  };
 
   const fetchBotConfig = async () => {
     try {
@@ -3135,6 +3037,48 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                 <h3 className="text-[14px] font-bold text-slate-800 mb-2">System Prompt Principal</h3>
                 <p className="text-[12px] text-slate-500 mb-4">Instrucciones vitales de cómo debe presentarse y pensar el asistente GPT cada vez que contesta.</p>
                 <textarea rows={10} value={botPrompt} onChange={e => setBotPrompt(e.target.value)} placeholder="Sos el asesor virtual de Neumáticos Gallo..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all resize-none shadow-sm" />
+              </div>
+
+              {/* Catálogo de Precios */}
+              <div className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50 mt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-[14px] font-bold text-slate-800 flex items-center">
+                      <Package className="w-4 h-4 mr-2 text-green-600" />
+                      Catálogo de Precios
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">El bot usa estos precios para cotizar automáticamente</p>
+                  </div>
+                  <div className="bg-green-100 text-green-700 text-[12px] font-bold px-3 py-1.5 rounded-lg">
+                    {productCount} productos
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <label className={`flex-1 flex items-center justify-center border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-all ${productUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
+                    <input 
+                      type="file" 
+                      accept=".xls,.xlsx" 
+                      onChange={handleProductUpload} 
+                      className="hidden" 
+                      disabled={productUploading}
+                    />
+                    {productUploading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
+                        <span className="text-[12px] text-blue-600 font-bold">Importando productos...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
+                        <div className="text-left">
+                          <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
+                          <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
+                        </div>
+                      </>
+                    )}
+                  </label>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-2">
