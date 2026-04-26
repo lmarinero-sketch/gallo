@@ -2715,8 +2715,6 @@ function Clients() {
                 </div>
               ))}
             </div>
-            </>
-            )}
 
             {/* Follow-ups Section */}
             <div className="p-5 flex-shrink-0">
@@ -2739,8 +2737,6 @@ function Clients() {
                 </div>
               ))}
             </div>
-            </>
-            )}
           </div>
         </div>
       )}
