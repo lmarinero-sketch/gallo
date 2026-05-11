@@ -295,10 +295,10 @@ serve(async (req) => {
       if (botEnabled && systemPrompt && messageContainsTrigger) {
         console.log("=== EDGE BOT: ACTIVADO — Procesando con GPT ===");
 
-        // ── FIX #12: Limpiar la palabra trigger del mensaje antes de enviar a GPT ──
         if (botTriggerConfig) {
           bodyText = bodyText.replace(new RegExp(botTriggerConfig, 'gi'), '').trim();
         }
+        console.log('=== SEARCH DEBUG: bodyText after cleanup: "' + bodyText + '" ===');
         
         try {
           // ── FIX #7: Rate limiting — máx 5 msgs/60s por teléfono ──
@@ -343,6 +343,7 @@ serve(async (req) => {
           const { data: dbBrands } = await supabase.from('ng_products').select('brand').not('brand', 'is', null);
           const brandKeywords = [...new Set((dbBrands || []).map((b: any) => (b.brand || '').toLowerCase().trim()).filter(Boolean))];
           const mentionedBrand = brandKeywords.find(b => b.length > 2 && bodyLower.includes(b));
+          console.log('=== SEARCH DEBUG: measureMatch=' + (measureMatch ? measureMatch[1] : 'null') + ', aroMatch=' + (aroMatch ? aroMatch[1] : 'null') + ', mentionedBrand=' + (mentionedBrand || 'null') + ' ===');
           // 4) vehiculo popular → medidas comunes (fallback de contexto)
           const vehicleMap: Record<string, string[]> = {
             'toro': ['245/45R17', '225/65R17', '215/60R17', '225/55R17'],
@@ -374,79 +375,135 @@ serve(async (req) => {
           const mentionedVehicle = Object.keys(vehicleMap).find(v => bodyLower.includes(v));
 
           if (measureMatch) {
-            // Busqueda exacta por medida completa
+            // Busqueda por medida completa
             const searchMeasure = measureMatch[1].replace(/\s/g, '');
-            console.log(`Buscando productos con medida: ${searchMeasure}`);
+            console.log('=== BUSCANDO medida: ' + searchMeasure + ' ===');
             
-            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-              .ilike('measure', `%${searchMeasure}%`).gt('stock', 0).order('price', { ascending: true });
-            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
-            const { data: products } = await query;
-
-            if (products && products.length > 0) {
-              productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
-              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-              console.log('Encontrados ' + products.length + ' productos para medida ' + searchMeasure);
+            try {
+              // Intento 1: buscar por campo measure
+              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .ilike('measure', '%' + searchMeasure + '%').gt('stock', 0).order('price', { ascending: true });
+              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
+              const { data: products, error: err1 } = await query;
+              
+              if (err1) console.log('ERROR measure query: ' + JSON.stringify(err1));
+              console.log('Resultado measure query: ' + (products ? products.length : 0) + ' productos');
+              
+              if (products && products.length > 0) {
+                productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+              } else {
+                // Intento 2: buscar con variante de formato (con espacio antes de R)
+                const measureWithSpace = searchMeasure.replace(/R/i, ' R');
+                console.log('=== FALLBACK 1: buscando por measure con espacio: ' + measureWithSpace + ' ===');
+                let q2 = supabase.from('ng_products').select('name, brand, measure, price, stock')
+                  .ilike('measure', '%' + measureWithSpace + '%').gt('stock', 0).order('price', { ascending: true });
+                if (mentionedBrand) q2 = q2.ilike('brand', '%' + mentionedBrand + '%');
+                const { data: p2 } = await q2;
+                
+                if (p2 && p2.length > 0) {
+                  productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + '\n';
+                  p2.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                  console.log('FALLBACK 1 exitoso: ' + p2.length + ' productos');
+                } else {
+                  // Intento 3: buscar por nombre del producto (contiene la medida)
+                  const nameSearch = searchMeasure.replace(/\//g, '/').replace(/R/i, ' R');
+                  console.log('=== FALLBACK 2: buscando por name ILIKE: ' + nameSearch + ' ===');
+                  const { data: p3 } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                    .ilike('name', '%' + nameSearch + '%').gt('stock', 0).order('price', { ascending: true }).limit(20);
+                  
+                  if (p3 && p3.length > 0) {
+                    productContext = '\n\n# PRODUCTOS DISPONIBLES PARA ' + searchMeasure + '\n';
+                    p3.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                    console.log('FALLBACK 2 exitoso: ' + p3.length + ' productos');
+                  } else {
+                    // Intento 4: buscar solo por numeros parciales (ej: "205" + "55" + "16")
+                    const nums = searchMeasure.match(/\d+/g) || [];
+                    if (nums.length >= 2) {
+                      const orParts = nums.map((n: string) => 'name.ilike.%' + n + '%');
+                      console.log('=== FALLBACK 3: buscando por numeros: ' + nums.join(', ') + ' ===');
+                      const { data: p4 } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                        .or(orParts.join(',')).gt('stock', 0).order('price', { ascending: true }).limit(15);
+                      if (p4 && p4.length > 0) {
+                        productContext = '\n\n# PRODUCTOS ENCONTRADOS PARA ' + searchMeasure + '\n';
+                        p4.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                        console.log('FALLBACK 3 exitoso: ' + p4.length + ' productos');
+                      }
+                    }
+                  }
+                }
+              }
+            } catch(searchError: any) {
+              console.error('ERROR CRITICO en busqueda por medida: ' + searchError.message);
             }
           } else if (aroMatch) {
             // Busqueda por aro parcial: "R17" → todos los R17
-            const aro = `R${aroMatch[1]}`;
-            console.log(`Buscando productos por aro: ${aro}`);
+            const aro = 'R' + aroMatch[1];
+            console.log('Buscando productos por aro: ' + aro);
             
-            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-              .ilike('measure', `%${aro}%`).gt('stock', 0).order('price', { ascending: true }).limit(20);
-            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
-            const { data: products } = await query;
+            try {
+              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .ilike('measure', '%' + aro + '%').gt('stock', 0).order('price', { ascending: true }).limit(20);
+              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
+              const { data: products } = await query;
 
-            if (products && products.length > 0) {
-              productContext = '\n\n# PRODUCTOS DISPONIBLES ARO ' + aro + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
-              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-              console.log('Encontrados ' + products.length + ' productos aro ' + aro);
-            }
+              if (products && products.length > 0) {
+                productContext = '\n\n# PRODUCTOS DISPONIBLES ARO ' + aro + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                console.log('Encontrados ' + products.length + ' productos aro ' + aro);
+              }
+            } catch(e: any) { console.error('Error busqueda aro: ' + e.message); }
           } else if (mentionedVehicle) {
             // Busqueda por vehiculo → medidas comunes
             const measures = vehicleMap[mentionedVehicle];
-            console.log(`Buscando productos para vehiculo: ${mentionedVehicle} → medidas: ${measures.join(', ')}`);
+            console.log('Buscando productos para vehiculo: ' + mentionedVehicle);
             
-            const orFilter = measures.map(m => `measure.ilike.%${m}%`).join(',');
-            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-              .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(20);
-            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
-            const { data: products } = await query;
-
-            if (products && products.length > 0) {
-              productContext = '\n\n# PRODUCTOS COMPATIBLES CON ' + mentionedVehicle.toUpperCase() + ' (medidas ' + measures.join(', ') + ')\n';
-              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-              console.log('Encontrados ' + products.length + ' productos para ' + mentionedVehicle);
-            }
-          } else if (mentionedBrand) {
-            // Solo marca, sin medida
-            console.log(`Buscando productos de marca: ${mentionedBrand}`);
-            const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-              .ilike('brand', `%${mentionedBrand}%`).gt('stock', 0).order('price', { ascending: true }).limit(15);
-
-            if (products && products.length > 0) {
-              productContext = '\n\n# PRODUCTOS DISPONIBLES DE ' + mentionedBrand.toUpperCase() + '\n';
-              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-              console.log('Encontrados ' + products.length + ' productos de ' + mentionedBrand);
-            }
-          } else {
-            // Fallback: buscar palabras clave en el nombre del producto
-            const keywords = bodyLower.replace(/edge/g, '').trim().split(/\s+/).filter((w: string) => w.length > 3);
-            if (keywords.length > 0) {
-              const searchTerm = keywords.join(' ');
-              console.log(`Busqueda fallback por keywords: ${searchTerm}`);
-              const orFilter = keywords.map((k: string) => `name.ilike.%${k}%`).join(',');
-              const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(15);
+            try {
+              const orFilter = measures.map((m: string) => 'measure.ilike.%' + m + '%').join(',');
+              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(20);
+              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
+              const { data: products } = await query;
 
               if (products && products.length > 0) {
-                productContext = '\n\n# PRODUCTOS ENCONTRADOS\n';
+                productContext = '\n\n# PRODUCTOS COMPATIBLES CON ' + mentionedVehicle.toUpperCase() + ' (medidas ' + measures.join(', ') + ')\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                console.log('Encontrados ' + products.length + ' productos por keywords');
+                console.log('Encontrados ' + products.length + ' productos para ' + mentionedVehicle);
               }
+            } catch(e: any) { console.error('Error busqueda vehiculo: ' + e.message); }
+          } else if (mentionedBrand) {
+            // Solo marca, sin medida
+            console.log('Buscando productos de marca: ' + mentionedBrand);
+            try {
+              const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .ilike('brand', '%' + mentionedBrand + '%').gt('stock', 0).order('price', { ascending: true }).limit(15);
+
+              if (products && products.length > 0) {
+                productContext = '\n\n# PRODUCTOS DISPONIBLES DE ' + mentionedBrand.toUpperCase() + '\n';
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                console.log('Encontrados ' + products.length + ' productos de ' + mentionedBrand);
+              }
+            } catch(e: any) { console.error('Error busqueda marca: ' + e.message); }
+          } else {
+            // Fallback: buscar palabras clave en el nombre del producto
+            const keywords = bodyLower.replace(/edge/g, '').replace(/precio/g, '').trim().split(/\s+/).filter((w: string) => w.length > 2);
+            if (keywords.length > 0) {
+              console.log('Busqueda fallback por keywords: ' + keywords.join(', '));
+              try {
+                const orFilter = keywords.map((k: string) => 'name.ilike.%' + k + '%').join(',');
+                const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                  .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(15);
+
+                if (products && products.length > 0) {
+                  productContext = '\n\n# PRODUCTOS ENCONTRADOS\n';
+                  products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                  console.log('Encontrados ' + products.length + ' productos por keywords');
+                }
+              } catch(e: any) { console.error('Error busqueda keywords: ' + e.message); }
             }
           }
+          
+          console.log('=== SEARCH FINAL: productContext length=' + productContext.length + ' chars ===');
 
           // ── Llamar a OpenAI GPT ──
           const openaiKey = Deno.env.get("OPENAI_API_KEY") || "";
