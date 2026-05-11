@@ -8,10 +8,12 @@ const corsHeaders = {
 };
 
 // Helper: pre-calcular precios con cuotas y descuentos
+// Muestra el nombre COMPLETO del producto (ej: "YOKOHAMA 225/60 R17 99H E70G ASPEC")
 function formatProductWithPricing(p: any): string {
   const price = Number(p.price);
   const fmt = (n: number) => Math.round(n).toLocaleString('es-AR');
-  let line = '\n* ' + [p.brand, p.measure, p.name].filter(Boolean).join(' ');
+  // Usar el nombre completo del articulo tal cual esta en la BD
+  let line = '\n* ' + (p.name || [p.brand, p.measure].filter(Boolean).join(' '));
   line += '\nPrecio Lista: $' + fmt(price);
   line += '\n  - 12 cuotas de $' + fmt(price / 12) + ' (Total: $' + fmt(price) + ')';
   line += '\n  - 6 cuotas de $' + fmt(price * 0.85 / 6) + ' (Total: $' + fmt(price * 0.85) + ') -15%';
@@ -287,9 +289,10 @@ serve(async (req) => {
       console.log(`Bot enabled: ${botEnabled}, TriggerConfig: "${botTriggerConfig}"`);
 
       // Verificar si debe activarse
-      const isMedia = attachmentUrls && attachmentUrls.length > 0;
+      // Si hay trigger configurado: SOLO activar si el TEXTO contiene el trigger (audio/media NO bypasea)
+      // Si NO hay trigger configurado: activar siempre (incluyendo audio/media)
       const messageContainsTrigger = botTriggerConfig 
-        ? (bodyText.toLowerCase().includes(botTriggerConfig) || isMedia) 
+        ? bodyText.toLowerCase().includes(botTriggerConfig)
         : true;
 
       if (botEnabled && systemPrompt && messageContainsTrigger) {
@@ -335,15 +338,25 @@ serve(async (req) => {
           let productContext = '';
           const bodyLower = bodyText.toLowerCase();
           
-          // 1) Medida completa: "195/55 R16", "265/70R17"
-          const measureMatch = bodyText.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
-          // 2) Aro parcial: solo "R17", "R16", "R15", etc.
+          // ── REGEX SUPER FLEXIBLE: acepta TODOS los formatos de medida ──
+          // 205/55R16, 205/55 R16, 205/55/16, 205-55-16, 205 55 16, 205 55 r16
+          const flexRegex = /(\d{3})\s*[\/\-\s]\s*(\d{2})\s*[\/\-\s]?\s*R?\s*(\d{2})/i;
+          const measureMatch = bodyText.match(flexRegex);
+          // Aro parcial: solo "R17", "R16", "R15", etc.
           const aroMatch = !measureMatch ? bodyText.match(/\bR\s*(\d{2})\b/i) : null;
-          // 3) FIX #5: Marcas dinámicas desde la BD (no hardcodeadas)
+          // Marcas dinamicas desde la BD
           const { data: dbBrands } = await supabase.from('ng_products').select('brand').not('brand', 'is', null);
           const brandKeywords = [...new Set((dbBrands || []).map((b: any) => (b.brand || '').toLowerCase().trim()).filter(Boolean))];
           const mentionedBrand = brandKeywords.find(b => b.length > 2 && bodyLower.includes(b));
-          console.log('=== SEARCH DEBUG: measureMatch=' + (measureMatch ? measureMatch[1] : 'null') + ', aroMatch=' + (aroMatch ? aroMatch[1] : 'null') + ', mentionedBrand=' + (mentionedBrand || 'null') + ' ===');
+          
+          // ── FILTRO RUN FLAT: excluir salvo que el cliente lo pida ──
+          const rfWords = ['runflat', 'run flat', 'run-flat', 'rft', ' zp', ' emt'];
+          const clientWantsRunFlat = rfWords.some(kw => bodyLower.includes(kw));
+          const rfPattern = /\b(RFT|RUNFLAT|RUN FLAT|RUN-FLAT|ZP|EMT)\b/i;
+          const filterRF = (arr: any[]) => clientWantsRunFlat ? arr : arr.filter((p: any) => !rfPattern.test(p.name || ''));
+          const MIN_STOCK = 4;
+          
+          console.log('=== SEARCH: measure=' + (measureMatch ? measureMatch[1]+'/'+measureMatch[2]+'R'+measureMatch[3] : 'null') + ' brand=' + (mentionedBrand || 'null') + ' wantsRF=' + clientWantsRunFlat + ' ===');
           // 4) vehiculo popular → medidas comunes (fallback de contexto)
           const vehicleMap: Record<string, string[]> = {
             'toro': ['245/45R17', '225/65R17', '215/60R17', '225/55R17'],
@@ -375,63 +388,32 @@ serve(async (req) => {
           const mentionedVehicle = Object.keys(vehicleMap).find(v => bodyLower.includes(v));
 
           if (measureMatch) {
-            // Busqueda por medida completa
-            const searchMeasure = measureMatch[1].replace(/\s/g, '');
-            console.log('=== BUSCANDO medida: ' + searchMeasure + ' ===');
+            // Normalizar a formato canonico
+            const ancho = measureMatch[1];
+            const perfil = measureMatch[2];
+            const aro = measureMatch[3];
+            const searchMeasure = ancho + '/' + perfil + 'R' + aro;
+            const searchAlt = ancho + '/' + perfil + ' R' + aro;
+            console.log('=== BUSCANDO medida normalizada: ' + searchMeasure + ' ===');
             
             try {
-              // Intento 1: buscar por campo measure
-              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .ilike('measure', '%' + searchMeasure + '%').gt('stock', 0).order('price', { ascending: true });
-              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
-              const { data: products, error: err1 } = await query;
+              // Buscar por measure O por name (ambos formatos con/sin espacio)
+              const { data: rawProducts, error: err1 } = await supabase.from('ng_products')
+                .select('name, brand, measure, price, stock')
+                .or('measure.ilike.%' + searchMeasure + '%,measure.ilike.%' + searchAlt + '%,name.ilike.%' + searchAlt + '%')
+                .gte('stock', MIN_STOCK)
+                .order('price', { ascending: false });
               
-              if (err1) console.log('ERROR measure query: ' + JSON.stringify(err1));
-              console.log('Resultado measure query: ' + (products ? products.length : 0) + ' productos');
+              if (err1) console.log('ERROR search: ' + JSON.stringify(err1));
+              let products = filterRF(rawProducts || []);
+              if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
+              console.log('Resultado: ' + (rawProducts ? rawProducts.length : 0) + ' raw, ' + products.length + ' filtered');
               
-              if (products && products.length > 0) {
+              if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
               } else {
-                // Intento 2: buscar con variante de formato (con espacio antes de R)
-                const measureWithSpace = searchMeasure.replace(/R/i, ' R');
-                console.log('=== FALLBACK 1: buscando por measure con espacio: ' + measureWithSpace + ' ===');
-                let q2 = supabase.from('ng_products').select('name, brand, measure, price, stock')
-                  .ilike('measure', '%' + measureWithSpace + '%').gt('stock', 0).order('price', { ascending: true });
-                if (mentionedBrand) q2 = q2.ilike('brand', '%' + mentionedBrand + '%');
-                const { data: p2 } = await q2;
-                
-                if (p2 && p2.length > 0) {
-                  productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + '\n';
-                  p2.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                  console.log('FALLBACK 1 exitoso: ' + p2.length + ' productos');
-                } else {
-                  // Intento 3: buscar por nombre del producto (contiene la medida)
-                  const nameSearch = searchMeasure.replace(/\//g, '/').replace(/R/i, ' R');
-                  console.log('=== FALLBACK 2: buscando por name ILIKE: ' + nameSearch + ' ===');
-                  const { data: p3 } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                    .ilike('name', '%' + nameSearch + '%').gt('stock', 0).order('price', { ascending: true }).limit(20);
-                  
-                  if (p3 && p3.length > 0) {
-                    productContext = '\n\n# PRODUCTOS DISPONIBLES PARA ' + searchMeasure + '\n';
-                    p3.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                    console.log('FALLBACK 2 exitoso: ' + p3.length + ' productos');
-                  } else {
-                    // Intento 4: buscar solo por numeros parciales (ej: "205" + "55" + "16")
-                    const nums = searchMeasure.match(/\d+/g) || [];
-                    if (nums.length >= 2) {
-                      const orParts = nums.map((n: string) => 'name.ilike.%' + n + '%');
-                      console.log('=== FALLBACK 3: buscando por numeros: ' + nums.join(', ') + ' ===');
-                      const { data: p4 } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                        .or(orParts.join(',')).gt('stock', 0).order('price', { ascending: true }).limit(15);
-                      if (p4 && p4.length > 0) {
-                        productContext = '\n\n# PRODUCTOS ENCONTRADOS PARA ' + searchMeasure + '\n';
-                        p4.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                        console.log('FALLBACK 3 exitoso: ' + p4.length + ' productos');
-                      }
-                    }
-                  }
-                }
+                // Ya no se necesitan fallbacks: la query OR cubre ambos formatos
               }
             } catch(searchError: any) {
               console.error('ERROR CRITICO en busqueda por medida: ' + searchError.message);
@@ -442,12 +424,12 @@ serve(async (req) => {
             console.log('Buscando productos por aro: ' + aro);
             
             try {
-              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .ilike('measure', '%' + aro + '%').gt('stock', 0).order('price', { ascending: true }).limit(20);
-              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
-              const { data: products } = await query;
+              const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .ilike('measure', '%' + aro + '%').gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(20);
+              let products = filterRF(rawProducts || []);
+              if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
 
-              if (products && products.length > 0) {
+              if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES ARO ' + aro + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
                 console.log('Encontrados ' + products.length + ' productos aro ' + aro);
@@ -460,28 +442,29 @@ serve(async (req) => {
             
             try {
               const orFilter = measures.map((m: string) => 'measure.ilike.%' + m + '%').join(',');
-              let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(20);
-              if (mentionedBrand) query = query.ilike('brand', '%' + mentionedBrand + '%');
-              const { data: products } = await query;
+              const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .or(orFilter).gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(20);
+              let products = filterRF(rawProducts || []);
+              if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
 
-              if (products && products.length > 0) {
+              if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS COMPATIBLES CON ' + mentionedVehicle.toUpperCase() + ' (medidas ' + measures.join(', ') + ')\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                console.log('Encontrados ' + products.length + ' productos para ' + mentionedVehicle);
+                console.log('Encontrados ' + products.length + ' para ' + mentionedVehicle);
               }
             } catch(e: any) { console.error('Error busqueda vehiculo: ' + e.message); }
           } else if (mentionedBrand) {
             // Solo marca, sin medida
             console.log('Buscando productos de marca: ' + mentionedBrand);
             try {
-              const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .ilike('brand', '%' + mentionedBrand + '%').gt('stock', 0).order('price', { ascending: true }).limit(15);
+              const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .ilike('brand', '%' + mentionedBrand + '%').gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(15);
+              const products = filterRF(rawProducts || []);
 
-              if (products && products.length > 0) {
+              if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES DE ' + mentionedBrand.toUpperCase() + '\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                console.log('Encontrados ' + products.length + ' productos de ' + mentionedBrand);
+                console.log('Encontrados ' + products.length + ' de ' + mentionedBrand);
               }
             } catch(e: any) { console.error('Error busqueda marca: ' + e.message); }
           } else {
@@ -491,13 +474,14 @@ serve(async (req) => {
               console.log('Busqueda fallback por keywords: ' + keywords.join(', '));
               try {
                 const orFilter = keywords.map((k: string) => 'name.ilike.%' + k + '%').join(',');
-                const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                  .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(15);
+                const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                  .or(orFilter).gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(15);
+                const products = filterRF(rawProducts || []);
 
-                if (products && products.length > 0) {
+                if (products.length > 0) {
                   productContext = '\n\n# PRODUCTOS ENCONTRADOS\n';
                   products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
-                  console.log('Encontrados ' + products.length + ' productos por keywords');
+                  console.log('Encontrados ' + products.length + ' por keywords');
                 }
               } catch(e: any) { console.error('Error busqueda keywords: ' + e.message); }
             }
