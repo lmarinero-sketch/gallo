@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import GallitoWidget from './GallitoWidget';
+import ProductosPanel from './ProductosPanel';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -123,6 +124,7 @@ function Sidebar() {
         <NavItem to="/mensajeria" icon={MessageSquare} text="Mensajería" />
         <NavItem to="/subir" icon={Upload} text="Subir Factura" />
         <NavItem to="/clientes" icon={Users} text="Clientes" />
+        <NavItem to="/productos" icon={Package} text="Productos" />
         <NavItem to="/seguimientos" icon={Clock} text="Seguimientos" />
         <div className="my-4" />
         <NavItem to="/configuracion" icon={Settings} text="Configuración" />
@@ -3574,6 +3576,7 @@ function App() {
           <Route path="/mensajeria" element={<Messenger />} />
           <Route path="/clientes" element={<Clients />} />
           <Route path="/seguimientos" element={<FollowUps />} />
+          <Route path="/productos" element={<ProductosPanel />} />
           <Route path="/configuracion" element={<Configuracion isSidebarOpen={isSidebarOpen} userRole="admin" />} />
         </Routes>
         <SystemModal 
