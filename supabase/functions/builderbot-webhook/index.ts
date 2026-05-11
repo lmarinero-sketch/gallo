@@ -146,6 +146,26 @@ serve(async (req) => {
       }
     }
 
+    // ── Deduplicación para incoming (BuilderBot puede disparar 2 veces el mismo evento) ──
+    if (!isOutgoing && body) {
+      const { data: recentIncoming } = await supabase
+        .from('ng_whatsapp_messages')
+        .select('id')
+        .eq('client_phone', phone)
+        .eq('direction', 'incoming')
+        .gte('created_at', new Date(Date.now() - 30000).toISOString())
+        .ilike('body', bodyText.substring(0, 50) + '%')
+        .limit(1);
+
+      if (recentIncoming && recentIncoming.length > 0) {
+        console.log("Mensaje entrante duplicado detectado. Ignorando insert.");
+        return new Response(JSON.stringify({ success: true, reason: 'duplicate_incoming' }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+    }
+
     // ── Insertar mensaje en la base de datos ──
     console.log(`Insertando en ng_whatsapp_messages [${computedDirection}]...`);
     const { error } = await supabase
