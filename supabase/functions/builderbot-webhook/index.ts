@@ -11,6 +11,7 @@ const corsHeaders = {
 // Muestra el nombre COMPLETO del producto (ej: "YOKOHAMA 225/60 R17 99H E70G ASPEC")
 function formatProductWithPricing(p: any): string {
   const price = Number(p.price);
+  const stock = Number(p.stock) || 0;
   const fmt = (n: number) => Math.round(n).toLocaleString('es-AR');
   // Usar el nombre completo del articulo tal cual esta en la BD
   let line = '\n* ' + (p.name || [p.brand, p.measure].filter(Boolean).join(' '));
@@ -19,7 +20,15 @@ function formatProductWithPricing(p: any): string {
   line += '\n  - 6 cuotas de $' + fmt(price * 0.85 / 6) + ' (Total: $' + fmt(price * 0.85) + ') -15%';
   line += '\n  - 3 cuotas de $' + fmt(price * 0.75 / 3) + ' (Total: $' + fmt(price * 0.75) + ') -25%';
   line += '\n  - Contado: $' + fmt(price * 0.70) + ' -30%';
-  line += '\n  Stock: ' + p.stock + ' unidades\n';
+  // Indicar estado de stock para que GPT informe al cliente
+  if (stock >= 4) {
+    line += '\n  Stock: ' + stock + ' unidades ✅';
+  } else if (stock > 0) {
+    line += '\n  Stock: ' + stock + ' unidades ⚠️ (ultimas unidades, consultar disponibilidad)';
+  } else {
+    line += '\n  Stock: SIN STOCK ❌ (disponible sobre pedido, consultar plazo)';
+  }
+  line += '\n';
   return line;
 }
 
@@ -354,7 +363,6 @@ serve(async (req) => {
           const clientWantsRunFlat = rfWords.some(kw => bodyLower.includes(kw));
           const rfPattern = /\b(RFT|RUNFLAT|RUN FLAT|RUN-FLAT|ZP|EMT)\b/i;
           const filterRF = (arr: any[]) => clientWantsRunFlat ? arr : arr.filter((p: any) => !rfPattern.test(p.name || ''));
-          const MIN_STOCK = 4;
           
           console.log('=== SEARCH: measure=' + (measureMatch ? measureMatch[1]+'/'+measureMatch[2]+'R'+measureMatch[3] : 'null') + ' brand=' + (mentionedBrand || 'null') + ' wantsRF=' + clientWantsRunFlat + ' ===');
           // 4) vehiculo popular → medidas comunes (fallback de contexto)
@@ -401,7 +409,6 @@ serve(async (req) => {
               const { data: rawProducts, error: err1 } = await supabase.from('ng_products')
                 .select('name, brand, measure, price, stock')
                 .or('measure.ilike.%' + searchMeasure + '%,measure.ilike.%' + searchAlt + '%,name.ilike.%' + searchAlt + '%')
-                .gte('stock', MIN_STOCK)
                 .order('price', { ascending: false });
               
               if (err1) console.log('ERROR search: ' + JSON.stringify(err1));
@@ -425,7 +432,7 @@ serve(async (req) => {
             
             try {
               const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .ilike('measure', '%' + aro + '%').gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(20);
+                .ilike('measure', '%' + aro + '%').order('price', { ascending: false }).limit(20);
               let products = filterRF(rawProducts || []);
               if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
 
@@ -443,7 +450,7 @@ serve(async (req) => {
             try {
               const orFilter = measures.map((m: string) => 'measure.ilike.%' + m + '%').join(',');
               const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .or(orFilter).gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(20);
+                .or(orFilter).order('price', { ascending: false }).limit(20);
               let products = filterRF(rawProducts || []);
               if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
 
@@ -458,7 +465,7 @@ serve(async (req) => {
             console.log('Buscando productos de marca: ' + mentionedBrand);
             try {
               const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                .ilike('brand', '%' + mentionedBrand + '%').gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(15);
+                .ilike('brand', '%' + mentionedBrand + '%').order('price', { ascending: false }).limit(15);
               const products = filterRF(rawProducts || []);
 
               if (products.length > 0) {
@@ -475,7 +482,7 @@ serve(async (req) => {
               try {
                 const orFilter = keywords.map((k: string) => 'name.ilike.%' + k + '%').join(',');
                 const { data: rawProducts } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
-                  .or(orFilter).gte('stock', MIN_STOCK).order('price', { ascending: false }).limit(15);
+                  .or(orFilter).order('price', { ascending: false }).limit(15);
                 const products = filterRF(rawProducts || []);
 
                 if (products.length > 0) {
