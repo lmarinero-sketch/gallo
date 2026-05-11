@@ -7,6 +7,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper: pre-calcular precios con cuotas y descuentos
+function formatProductWithPricing(p: any): string {
+  const price = Number(p.price);
+  const fmt = (n: number) => Math.round(n).toLocaleString('es-AR');
+  let line = '\n* ' + [p.brand, p.measure, p.name].filter(Boolean).join(' ');
+  line += '\nPrecio Lista: $' + fmt(price);
+  line += '\n  - 12 cuotas de $' + fmt(price / 12) + ' (Total: $' + fmt(price) + ')';
+  line += '\n  - 6 cuotas de $' + fmt(price * 0.85 / 6) + ' (Total: $' + fmt(price * 0.85) + ') -15%';
+  line += '\n  - 3 cuotas de $' + fmt(price * 0.75 / 3) + ' (Total: $' + fmt(price * 0.75) + ') -25%';
+  line += '\n  - Contado: $' + fmt(price * 0.70) + ' -30%';
+  line += '\n  Stock: ' + p.stock + ' unidades\n';
+  return line;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -370,11 +384,9 @@ serve(async (req) => {
             const { data: products } = await query;
 
             if (products && products.length > 0) {
-              productContext = `\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ${searchMeasure}${mentionedBrand ? ` (${mentionedBrand.toUpperCase()})` : ''}\n`;
-              products.forEach((p: any) => {
-                productContext += `- ${p.name} → Precio Lista: $${p.price.toLocaleString()} | Stock: ${p.stock} unidades\n`;
-              });
-              console.log(`Encontrados ${products.length} productos para medida ${searchMeasure}`);
+              productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
+              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+              console.log('Encontrados ' + products.length + ' productos para medida ' + searchMeasure);
             }
           } else if (aroMatch) {
             // Busqueda por aro parcial: "R17" → todos los R17
@@ -387,11 +399,9 @@ serve(async (req) => {
             const { data: products } = await query;
 
             if (products && products.length > 0) {
-              productContext = `\n\n# PRODUCTOS DISPONIBLES ARO ${aro}${mentionedBrand ? ` (${mentionedBrand.toUpperCase()})` : ''}\n`;
-              products.forEach((p: any) => {
-                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
-              });
-              console.log(`Encontrados ${products.length} productos aro ${aro}`);
+              productContext = '\n\n# PRODUCTOS DISPONIBLES ARO ' + aro + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
+              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+              console.log('Encontrados ' + products.length + ' productos aro ' + aro);
             }
           } else if (mentionedVehicle) {
             // Busqueda por vehiculo → medidas comunes
@@ -405,11 +415,9 @@ serve(async (req) => {
             const { data: products } = await query;
 
             if (products && products.length > 0) {
-              productContext = `\n\n# PRODUCTOS COMPATIBLES CON ${mentionedVehicle.toUpperCase()} (medidas ${measures.join(', ')})\n`;
-              products.forEach((p: any) => {
-                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
-              });
-              console.log(`Encontrados ${products.length} productos para ${mentionedVehicle}`);
+              productContext = '\n\n# PRODUCTOS COMPATIBLES CON ' + mentionedVehicle.toUpperCase() + ' (medidas ' + measures.join(', ') + ')\n';
+              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+              console.log('Encontrados ' + products.length + ' productos para ' + mentionedVehicle);
             }
           } else if (mentionedBrand) {
             // Solo marca, sin medida
@@ -418,11 +426,9 @@ serve(async (req) => {
               .ilike('brand', `%${mentionedBrand}%`).gt('stock', 0).order('price', { ascending: true }).limit(15);
 
             if (products && products.length > 0) {
-              productContext = `\n\n# PRODUCTOS DISPONIBLES DE ${mentionedBrand.toUpperCase()}\n`;
-              products.forEach((p: any) => {
-                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
-              });
-              console.log(`Encontrados ${products.length} productos de ${mentionedBrand}`);
+              productContext = '\n\n# PRODUCTOS DISPONIBLES DE ' + mentionedBrand.toUpperCase() + '\n';
+              products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+              console.log('Encontrados ' + products.length + ' productos de ' + mentionedBrand);
             }
           } else {
             // Fallback: buscar palabras clave en el nombre del producto
@@ -435,11 +441,9 @@ serve(async (req) => {
                 .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(15);
 
               if (products && products.length > 0) {
-                productContext = `\n\n# PRODUCTOS ENCONTRADOS\n`;
-                products.forEach((p: any) => {
-                  productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
-                });
-                console.log(`Encontrados ${products.length} productos por keywords`);
+                productContext = '\n\n# PRODUCTOS ENCONTRADOS\n';
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                console.log('Encontrados ' + products.length + ' productos por keywords');
               }
             }
           }
