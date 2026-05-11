@@ -270,50 +270,129 @@ Luego de esa etiqueta, despídete amablemente del cliente informando que lo comu
             content: m.body || ''
           }));
 
-          // ── Buscar productos relevantes en la BD ──
+          // ── Buscar productos relevantes en la BD (búsqueda inteligente) ──
           let productContext = '';
-          
-          // Buscar por medida si el mensaje contiene un patrón tipo "195/55 R16"
-          const measureMatch = bodyText.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
-          // Buscar por marca
-          const brandKeywords = ['michelin', 'bridgestone', 'continental', 'pirelli', 'dunlop', 'goodyear', 'yokohama', 'hankook', 'nexen', 'fate', 'firestone', 'westlake', 'linglong', 'giti', 'kumho', 'falken', 'laufenn', 'bfgoodrich', 'chaoyang', 'windforce', 'firemax', 'triangle'];
           const bodyLower = bodyText.toLowerCase();
+          
+          // 1) Medida completa: "195/55 R16", "265/70R17"
+          const measureMatch = bodyText.match(/(\d{2,3}\s*\/\s*\d{2,3}\s*R?\s*\d{2,3})/i);
+          // 2) Aro parcial: solo "R17", "R16", "R15", etc.
+          const aroMatch = !measureMatch ? bodyText.match(/\bR\s*(\d{2})\b/i) : null;
+          // 3) Marca
+          const brandKeywords = ['michelin', 'bridgestone', 'continental', 'pirelli', 'dunlop', 'goodyear', 'yokohama', 'hankook', 'nexen', 'fate', 'firestone', 'westlake', 'linglong', 'giti', 'kumho', 'falken', 'laufenn', 'bfgoodrich', 'chaoyang', 'windforce', 'firemax', 'triangle'];
           const mentionedBrand = brandKeywords.find(b => bodyLower.includes(b));
+          // 4) Vehículo popular → medidas comunes (fallback de contexto)
+          const vehicleMap: Record<string, string[]> = {
+            'toro': ['245/45R17', '225/65R17', '215/60R17', '225/55R17'],
+            'hilux': ['265/65R17', '255/70R16', '265/60R18'],
+            'amarok': ['255/60R18', '245/65R17', '255/55R19'],
+            'ranger': ['265/60R18', '255/70R16', '245/65R17'],
+            'cronos': ['185/65R15', '195/55R16', '185/60R15'],
+            'corolla': ['195/65R15', '205/55R16', '215/45R17'],
+            'etios': ['175/65R15', '185/60R15'],
+            'onix': ['195/55R16', '185/65R15', '195/65R15'],
+            'cruze': ['205/55R16', '215/55R17', '225/45R18'],
+            'tracker': ['215/55R17', '215/60R17'],
+            'duster': ['215/65R16', '215/60R17'],
+            'kicks': ['205/60R16', '205/55R17'],
+            'tcross': ['205/60R16', '205/55R17'],
+            'taos': ['215/55R18', '215/60R17'],
+            'ecosport': ['195/60R16', '205/55R17'],
+            'suran': ['185/65R15', '195/60R15'],
+            'vento': ['205/55R16', '225/45R17'],
+            'polo': ['185/60R15', '195/55R16'],
+            'gol': ['175/70R14', '185/60R15'],
+            'saveiro': ['185/60R15', '175/70R14'],
+            's10': ['255/65R17', '265/60R18'],
+            'frontier': ['255/60R18', '265/65R17'],
+            'partner': ['185/65R15', '195/65R15'],
+            'berlingo': ['195/65R15', '205/55R16'],
+            'kangoo': ['185/65R15'],
+          };
+          const mentionedVehicle = Object.keys(vehicleMap).find(v => bodyLower.includes(v));
 
           if (measureMatch) {
+            // Búsqueda exacta por medida completa
             const searchMeasure = measureMatch[1].replace(/\s/g, '');
             console.log(`Buscando productos con medida: ${searchMeasure}`);
             
-            const { data: products } = await supabase
-              .from('ng_products')
-              .select('name, brand, measure, price, stock')
-              .ilike('measure', `%${searchMeasure}%`)
-              .gt('stock', 0)
-              .order('price', { ascending: true });
+            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+              .ilike('measure', `%${searchMeasure}%`).gt('stock', 0).order('price', { ascending: true });
+            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
+            const { data: products } = await query;
 
             if (products && products.length > 0) {
-              productContext = `\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ${searchMeasure}\n`;
+              productContext = `\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ${searchMeasure}${mentionedBrand ? ` (${mentionedBrand.toUpperCase()})` : ''}\n`;
               products.forEach((p: any) => {
                 productContext += `- ${p.name} → Precio Lista: $${p.price.toLocaleString()} | Stock: ${p.stock} unidades\n`;
               });
               console.log(`Encontrados ${products.length} productos para medida ${searchMeasure}`);
             }
+          } else if (aroMatch) {
+            // Búsqueda por aro parcial: "R17" → todos los R17
+            const aro = `R${aroMatch[1]}`;
+            console.log(`Buscando productos por aro: ${aro}`);
+            
+            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+              .ilike('measure', `%${aro}%`).gt('stock', 0).order('price', { ascending: true }).limit(20);
+            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
+            const { data: products } = await query;
+
+            if (products && products.length > 0) {
+              productContext = `\n\n# PRODUCTOS DISPONIBLES ARO ${aro}${mentionedBrand ? ` (${mentionedBrand.toUpperCase()})` : ''}\n`;
+              products.forEach((p: any) => {
+                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
+              });
+              console.log(`Encontrados ${products.length} productos aro ${aro}`);
+            }
+          } else if (mentionedVehicle) {
+            // Búsqueda por vehículo → medidas comunes
+            const measures = vehicleMap[mentionedVehicle];
+            console.log(`Buscando productos para vehículo: ${mentionedVehicle} → medidas: ${measures.join(', ')}`);
+            
+            const orFilter = measures.map(m => `measure.ilike.%${m}%`).join(',');
+            let query = supabase.from('ng_products').select('name, brand, measure, price, stock')
+              .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(20);
+            if (mentionedBrand) query = query.ilike('brand', `%${mentionedBrand}%`);
+            const { data: products } = await query;
+
+            if (products && products.length > 0) {
+              productContext = `\n\n# PRODUCTOS COMPATIBLES CON ${mentionedVehicle.toUpperCase()} (medidas ${measures.join(', ')})\n`;
+              products.forEach((p: any) => {
+                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
+              });
+              console.log(`Encontrados ${products.length} productos para ${mentionedVehicle}`);
+            }
           } else if (mentionedBrand) {
+            // Solo marca, sin medida
             console.log(`Buscando productos de marca: ${mentionedBrand}`);
-            const { data: products } = await supabase
-              .from('ng_products')
-              .select('name, brand, measure, price, stock')
-              .ilike('brand', `%${mentionedBrand}%`)
-              .gt('stock', 0)
-              .order('price', { ascending: true })
-              .limit(15);
+            const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+              .ilike('brand', `%${mentionedBrand}%`).gt('stock', 0).order('price', { ascending: true }).limit(15);
 
             if (products && products.length > 0) {
               productContext = `\n\n# PRODUCTOS DISPONIBLES DE ${mentionedBrand.toUpperCase()}\n`;
               products.forEach((p: any) => {
-                productContext += `- ${p.name} → Precio Lista: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
+                productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
               });
               console.log(`Encontrados ${products.length} productos de ${mentionedBrand}`);
+            }
+          } else {
+            // Fallback: buscar palabras clave en el nombre del producto
+            const keywords = bodyLower.replace(/edge/g, '').trim().split(/\s+/).filter((w: string) => w.length > 3);
+            if (keywords.length > 0) {
+              const searchTerm = keywords.join(' ');
+              console.log(`Búsqueda fallback por keywords: ${searchTerm}`);
+              const orFilter = keywords.map((k: string) => `name.ilike.%${k}%`).join(',');
+              const { data: products } = await supabase.from('ng_products').select('name, brand, measure, price, stock')
+                .or(orFilter).gt('stock', 0).order('price', { ascending: true }).limit(15);
+
+              if (products && products.length > 0) {
+                productContext = `\n\n# PRODUCTOS ENCONTRADOS\n`;
+                products.forEach((p: any) => {
+                  productContext += `- ${p.name} | Medida: ${p.measure} → Precio: $${p.price.toLocaleString()} | Stock: ${p.stock}\n`;
+                });
+                console.log(`Encontrados ${products.length} productos por keywords`);
+              }
             }
           }
 
