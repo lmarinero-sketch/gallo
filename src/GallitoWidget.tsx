@@ -31,7 +31,7 @@ export default function GallitoWidget() {
   const [hasOpenedBefore, setHasOpenedBefore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const tipTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const tipTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
 
