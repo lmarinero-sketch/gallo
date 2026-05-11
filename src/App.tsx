@@ -2838,20 +2838,28 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
       const products: any[] = [];
-      for (let i = 5; i < data.length; i++) {
+      // Auto-detect header row (look for 'Cód' or 'Articulo' in first cells)
+      let headerRow = 0;
+      for (let i = 0; i < Math.min(data.length, 5); i++) {
         const row = data[i];
-        if (!row || !row[0] || row[0] === 'Grand Total') continue;
+        if (row && row.some((cell: any) => String(cell || '').toLowerCase().includes('art') || String(cell || '').toLowerCase().includes('cód'))) {
+          headerRow = i;
+          break;
+        }
+      }
+
+      // Columnas esperadas: A=Cód.Art, B=Articulo, C=Marca, D=Medida, E=Cód.Alt, F=Precio, G=Cantidad
+      for (let i = headerRow + 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0] || String(row[0]).toLowerCase().includes('total')) continue;
         
         const code = String(row[0]).trim();
-        const altCode = row[3] ? String(row[3]).trim() : null;
-        const fullName = row[7] ? String(row[7]).trim() : '';
-        const price = typeof row[10] === 'number' ? row[10] : parseFloat(row[10]) || 0;
-        const stock = typeof row[13] === 'number' ? row[13] : parseInt(row[13]) || 0;
-
-        const brandMatch = fullName.match(/^N\.\s+(\S+)/);
-        const brand = brandMatch ? brandMatch[1] : '';
-        const measureMatch = fullName.match(/(\d{2,3}\/\d{2,3}\s*R\s*\d{2,3})/i);
-        const measure = measureMatch ? measureMatch[1].replace(/\s+/g, '') : '';
+        const fullName = row[1] ? String(row[1]).trim() : '';
+        const brand = row[2] ? String(row[2]).trim() : '';
+        const measure = row[3] ? String(row[3]).replace(/\s+/g, '') : '';
+        const altCode = row[4] ? String(row[4]).trim() : null;
+        const price = typeof row[5] === 'number' ? row[5] : parseFloat(String(row[5]).replace(/[^0-9.]/g, '')) || 0;
+        const stock = typeof row[6] === 'number' ? row[6] : parseInt(String(row[6]).replace(/[^0-9]/g, '')) || 0;
 
         if (code && fullName) {
           products.push({ code, alt_code: altCode, name: fullName, brand, measure, price, stock });
@@ -3216,8 +3224,8 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
                             <>
                               <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
                               <div className="text-left">
-                                <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
-                                <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
+                              <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
+                                <span className="text-[10px] text-slate-400">Columnas: Cód.Art | Articulo | Marca | Medida | Cód.Alt | Precio | Cantidad</span>
                               </div>
                             </>
                           )}
