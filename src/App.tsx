@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import GallitoWidget from './GallitoWidget';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -2785,6 +2786,10 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
   const [botSaving, setBotSaving] = useState(false);
   const [productCount, setProductCount] = useState(0);
   const [productUploading, setProductUploading] = useState(false);
+  const [botConfigLoading, setBotConfigLoading] = useState(true);
+  const [productPreview, setProductPreview] = useState<any[] | null>(null);
+  const [pendingProducts, setPendingProducts] = useState<any[]>([]);
+  const [lastCatalogUpdate, setLastCatalogUpdate] = useState<string | null>(null);
   
   // Settings State
   const [settings, setSettings] = useState<any>({
@@ -2810,11 +2815,17 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
     try {
       const { count } = await supabase.from('ng_products').select('*', { count: 'exact', head: true }).neq('id', '00000000-0000-0000-0000-000000000000');
       setProductCount(count || 0);
+      // Get last catalog update date
+      const { data: lastProduct } = await supabase.from('ng_products').select('created_at').order('created_at', { ascending: false }).limit(1);
+      if (lastProduct && lastProduct.length > 0) {
+        setLastCatalogUpdate(new Date(lastProduct[0].created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
+  // Step 1: Parse Excel and show preview
   const handleProductUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2853,17 +2864,9 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
         return;
       }
 
-      // Clear and re-upload
-      await supabase.from('ng_products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // Upload in batches of 50
-      for (let i = 0; i < products.length; i += 50) {
-        const batch = products.slice(i, i + 50);
-        await supabase.from('ng_products').insert(batch);
-      }
-
-      setProductCount(products.length);
-      showSystemModal('Catálogo Actualizado', `Se importaron ${products.length} productos correctamente. El bot ya tiene acceso a los precios actualizados.`, 'success');
+      // Show preview instead of uploading immediately
+      setProductPreview(products.slice(0, 8));
+      setPendingProducts(products);
     } catch (err: any) {
       console.error('Error uploading products:', err);
       showSystemModal('Error', 'Error procesando el archivo: ' + err.message, 'error');
@@ -2872,16 +2875,49 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
     e.target.value = '';
   };
 
-  const fetchBotConfig = async () => {
+  // Step 2: Confirm and upload to DB
+  const confirmProductUpload = async () => {
+    if (pendingProducts.length === 0) return;
+    setProductUploading(true);
     try {
-      const { data } = await supabase.from('ng_bot_config').select('key, value');
+      await supabase.from('ng_products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      for (let i = 0; i < pendingProducts.length; i += 50) {
+        const batch = pendingProducts.slice(i, i + 50);
+        await supabase.from('ng_products').insert(batch);
+      }
+      setProductCount(pendingProducts.length);
+      setLastCatalogUpdate(new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+      showSystemModal('Catálogo Actualizado', `Se importaron ${pendingProducts.length} productos correctamente. El bot ya tiene acceso a los precios actualizados.`, 'success');
+    } catch (err: any) {
+      console.error('Error uploading products:', err);
+      showSystemModal('Error', 'Error subiendo productos a la base de datos: ' + err.message, 'error');
+    }
+    setProductUploading(false);
+    setProductPreview(null);
+    setPendingProducts([]);
+  };
+
+  const cancelProductUpload = () => {
+    setProductPreview(null);
+    setPendingProducts([]);
+  };
+
+  const fetchBotConfig = async () => {
+    setBotConfigLoading(true);
+    try {
+      const { data, error } = await supabase.from('ng_bot_config').select('key, value');
+      if (error) throw error;
       const map: Record<string, string> = {};
       (data || []).forEach((c: any) => { map[c.key] = c.value; });
       setBotEnabled(map['bot_enabled'] === 'true');
       setBotTrigger(map['bot_trigger'] || '');
       setBotPrompt(map['system_prompt'] || '');
       setOriginalBotPrompt(map['system_prompt'] || '');
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      console.error('Error fetching bot config:', e);
+      showSystemModal('Error de Conexión', 'No se pudo cargar la configuración del Bot IA. Verificá que las tablas existan en Supabase.\n\nDetalle: ' + (e?.message || 'Error desconocido'), 'error');
+    }
+    setBotConfigLoading(false);
   };
 
   const saveBotConfig = async () => {
@@ -3034,82 +3070,174 @@ function Configuracion({ isSidebarOpen, userRole }: { isSidebarOpen: boolean, us
 
           {activeTab === 'bot-ia' && (
             <div className="animate-in fade-in space-y-8">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                   <h3 className="text-xl font-bold text-slate-800 mb-2">Bot de Inteligencia Artificial</h3>
-                   <p className="text-slate-500 text-sm">Controla la personalidad del bot y sus disparadores automáticos (triggers).</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={botEnabled} onChange={e => setBotEnabled(e.target.checked)} className="sr-only peer" />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  <span className="ml-3 text-sm font-bold text-slate-800">{botEnabled ? 'Activado' : 'Apagado'}</span>
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Palabra Clave (Trigger)</label>
-                  <input type="text" value={botTrigger} onChange={e => setBotTrigger(e.target.value)} placeholder="Ej: asistente, edge" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-slate-100">
-                <h3 className="text-[14px] font-bold text-slate-800 mb-2">System Prompt Principal</h3>
-                <p className="text-[12px] text-slate-500 mb-4">Instrucciones vitales de cómo debe presentarse y pensar el asistente GPT cada vez que contesta.</p>
-                <textarea rows={10} value={botPrompt} onChange={e => setBotPrompt(e.target.value)} placeholder="Sos el asesor virtual de Neumáticos Gallo..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all resize-none shadow-sm" />
-              </div>
-
-              {/* Catálogo de Precios */}
-              <div className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50 mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="text-[14px] font-bold text-slate-800 flex items-center">
-                      <Package className="w-4 h-4 mr-2 text-green-600" />
-                      Catálogo de Precios
-                    </h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">El bot usa estos precios para cotizar automáticamente</p>
+              {botConfigLoading ? (
+                /* Loading Skeleton */
+                <div className="space-y-6 animate-pulse">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="h-6 bg-slate-200 rounded w-64 mb-2"></div>
+                      <div className="h-4 bg-slate-100 rounded w-96"></div>
+                    </div>
+                    <div className="w-20 h-6 bg-slate-200 rounded-full"></div>
                   </div>
-                  <div className="bg-green-100 text-green-700 text-[12px] font-bold px-3 py-1.5 rounded-lg">
-                    {productCount} productos
-                  </div>
+                  <div className="h-10 bg-slate-100 rounded-xl w-1/2"></div>
+                  <div className="h-40 bg-slate-100 rounded-xl"></div>
+                  <div className="h-24 bg-slate-100 rounded-xl"></div>
                 </div>
-                
-                <div className="flex items-center space-x-3">
-                  <label className={`flex-1 flex items-center justify-center border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-all ${productUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
-                    <input 
-                      type="file" 
-                      accept=".xls,.xlsx" 
-                      onChange={handleProductUpload} 
-                      className="hidden" 
-                      disabled={productUploading}
-                    />
-                    {productUploading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
-                        <span className="text-[12px] text-blue-600 font-bold">Importando productos...</span>
-                      </>
-                    ) : (
-                      <>
-                        <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
-                        <div className="text-left">
-                          <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
-                          <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
-                        </div>
-                      </>
+              ) : (
+                <>
+                  {/* Header con Toggle */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                       <h3 className="text-xl font-bold text-slate-800 mb-2">Bot de Inteligencia Artificial</h3>
+                       <p className="text-slate-500 text-sm">Controla la personalidad del bot y sus disparadores automáticos (triggers).</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" checked={botEnabled} onChange={e => setBotEnabled(e.target.checked)} className="sr-only peer" />
+                      <div className={`w-11 h-6 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full peer-checked:after:border-white ${botEnabled ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                      <span className={`ml-3 text-sm font-bold ${botEnabled ? 'text-green-700' : 'text-slate-500'}`}>{botEnabled ? 'Activado' : 'Apagado'}</span>
+                    </label>
+                  </div>
+
+                  {/* Status banner */}
+                  <div className={`flex items-center px-4 py-3 rounded-xl text-[12px] font-bold border ${botEnabled ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                    <div className={`w-2 h-2 rounded-full mr-2 ${botEnabled ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`}></div>
+                    {botEnabled ? 'El bot está respondiendo mensajes entrantes en WhatsApp automáticamente.' : 'El bot está apagado. Los mensajes entrantes no recibirán respuesta automática.'}
+                  </div>
+
+                  {/* Trigger */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Palabra Clave (Trigger)</label>
+                      <input type="text" value={botTrigger} onChange={e => setBotTrigger(e.target.value)} placeholder="Ej: asistente, edge (vacío = responde siempre)" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all" />
+                      <p className="text-[10px] text-slate-400 mt-1.5">Si está vacío, el bot responde a todos los mensajes. Si tiene valor, solo responde cuando el mensaje contiene esa palabra.</p>
+                    </div>
+                  </div>
+
+                  {/* System Prompt */}
+                  <div className="pt-6 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-[14px] font-bold text-slate-800">System Prompt Principal</h3>
+                      <span className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg ${botPrompt.length > 2000 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {botPrompt.length} caracteres
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-slate-500 mb-4">Instrucciones vitales de cómo debe presentarse y pensar el asistente GPT cada vez que contesta.</p>
+                    <textarea rows={12} value={botPrompt} onChange={e => setBotPrompt(e.target.value)} placeholder="Sos el asesor virtual de Neumáticos Gallo..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all resize-none shadow-sm font-mono leading-relaxed" />
+                    {botPrompt !== originalBotPrompt && (
+                      <div className="flex items-center mt-2 text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        <AlertCircle className="w-3.5 h-3.5 mr-2 shrink-0" />
+                        Tenés cambios sin guardar en el prompt.
+                      </div>
                     )}
-                  </label>
-                </div>
-              </div>
+                  </div>
 
-              <div className="flex items-center justify-between pt-2">
-                 <button onClick={() => setBotPrompt(originalBotPrompt)} disabled={botPrompt === originalBotPrompt} className={`px-6 py-3 rounded-xl font-bold text-[12px] transition-all flex items-center ${botPrompt !== originalBotPrompt ? 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 hover:text-amber-700 shadow-sm' : 'bg-slate-50 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'}`}>
-                   <RotateCcw className="w-3.5 h-3.5 mr-2" />
-                   Deshacer Cambios (Volver Atrás)
-                 </button>
-                 <button onClick={saveBotConfig} disabled={botSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-6 py-3 rounded-xl shadow-md transition-all text-[12px]">
-                   {botSaving ? 'Guardando...' : 'Guardar y Aplicar Historial'}
-                 </button>
-              </div>
+                  {/* Catálogo de Precios */}
+                  <div className="border border-slate-200 rounded-xl p-5 bg-gradient-to-br from-white to-slate-50 mt-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="text-[14px] font-bold text-slate-800 flex items-center">
+                          <Package className="w-4 h-4 mr-2 text-green-600" />
+                          Catálogo de Precios
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">El bot usa estos precios para cotizar automáticamente</p>
+                        {lastCatalogUpdate && (
+                          <p className="text-[10px] text-blue-500 mt-1 font-medium">Última actualización: {lastCatalogUpdate}</p>
+                        )}
+                      </div>
+                      <div className={`text-[12px] font-bold px-3 py-1.5 rounded-lg ${productCount > 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {productCount} productos
+                      </div>
+                    </div>
+                    
+                    {/* Product Preview Table */}
+                    {productPreview && productPreview.length > 0 ? (
+                      <div className="space-y-3 mt-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center text-[12px] font-bold text-blue-700">
+                          <Info className="w-4 h-4 mr-2 shrink-0" />
+                          Se detectaron {pendingProducts.length} productos. Revisá la vista previa y confirmá la carga.
+                        </div>
+                        <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[260px] overflow-y-auto">
+                          <table className="w-full text-[12px]">
+                            <thead className="bg-slate-50 sticky top-0">
+                              <tr>
+                                <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Código</th>
+                                <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Producto</th>
+                                <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Marca</th>
+                                <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Precio</th>
+                                <th className="text-right px-3 py-2 font-bold text-slate-500 uppercase text-[10px]">Stock</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {productPreview.map((p: any, i: number) => (
+                                <tr key={i} className="hover:bg-blue-50/40">
+                                  <td className="px-3 py-2 font-mono text-slate-500">{p.code}</td>
+                                  <td className="px-3 py-2 font-medium text-slate-800 truncate max-w-[220px]">{p.name}</td>
+                                  <td className="px-3 py-2 text-slate-600">{p.brand || '—'}</td>
+                                  <td className="px-3 py-2 font-mono font-bold text-slate-800 text-right">{formatMoney(p.price)}</td>
+                                  <td className="px-3 py-2 font-bold text-right">{p.stock}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {pendingProducts.length > 8 && (
+                          <p className="text-[10px] text-slate-400 text-center">Mostrando 8 de {pendingProducts.length} productos...</p>
+                        )}
+                        <div className="flex gap-3">
+                          <button onClick={cancelProductUpload} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-xl text-[12px] transition-all border border-slate-200">
+                            Cancelar
+                          </button>
+                          <button onClick={confirmProductUpload} disabled={productUploading} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-[12px] transition-all shadow-md flex items-center justify-center disabled:opacity-50">
+                            {productUploading ? (
+                              <><RefreshCw className="w-4 h-4 animate-spin mr-2" /> Subiendo...</>
+                            ) : (
+                              <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar Carga ({pendingProducts.length} productos)</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-3">
+                        <label className={`flex-1 flex items-center justify-center border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-all ${productUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'}`}>
+                          <input 
+                            type="file" 
+                            accept=".xls,.xlsx" 
+                            onChange={handleProductUpload} 
+                            className="hidden" 
+                            disabled={productUploading}
+                          />
+                          {productUploading ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
+                              <span className="text-[12px] text-blue-600 font-bold">Leyendo archivo...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UploadCloud className="w-5 h-5 text-slate-400 mr-2" />
+                              <div className="text-left">
+                                <span className="text-[12px] text-slate-600 font-bold block">Subir archivo de precios</span>
+                                <span className="text-[10px] text-slate-400">Formato XLS/XLSX con la estructura de Neumáticos Gallo</span>
+                              </div>
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between pt-2">
+                     <button onClick={() => setBotPrompt(originalBotPrompt)} disabled={botPrompt === originalBotPrompt} className={`px-6 py-3 rounded-xl font-bold text-[12px] transition-all flex items-center ${botPrompt !== originalBotPrompt ? 'bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 hover:text-amber-700 shadow-sm' : 'bg-slate-50 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'}`}>
+                       <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                       Deshacer Cambios (Volver Atrás)
+                     </button>
+                     <button onClick={saveBotConfig} disabled={botSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-6 py-3 rounded-xl shadow-md transition-all text-[12px] flex items-center disabled:opacity-50">
+                       {botSaving ? <><RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" /> Guardando...</> : <><Check className="w-3.5 h-3.5 mr-2" /> Guardar Configuración</>}
+                     </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -3447,6 +3575,7 @@ function App() {
           type={modalState.type} 
           onClose={() => setModalState(s => ({ ...s, isOpen: false }))} 
         />
+        <GallitoWidget />
       </div>
     </AppContext.Provider>
   );

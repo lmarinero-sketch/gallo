@@ -408,3 +408,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/sales-copilot/deno.json"
 entrypoint = "./functions/sales-copilot/index.ts"
+
+[functions.gallito]
+enabled = true
+verify_jwt = false
+import_map = "./functions/gallito/deno.json"
+entrypoint = "./functions/gallito/index.ts"
