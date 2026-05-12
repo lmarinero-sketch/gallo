@@ -266,43 +266,63 @@ serve(async (req) => {
       const botEnabled = configMap['bot_enabled'] === 'true';
       const botTriggerConfig = (configMap['bot_trigger'] || '').toLowerCase().trim();
       
-      // Auto-Adaptive Profile, Anti-Hallucination & Human Handoff Instructions
+      // ══ PERFIL VENDEDOR + Reglas Operativas del Bot ══
       const adaptiveInstructions = [
-        '[INFORMACIÓN DEL NEGOCIO - NEUMÁTICOS GALLO]:',
-        '- Sucursales:',
-        '  📍 Sucursal Victoria: Av. Pres. Perón 3479 — Tel: 11-4746-2416',
-        '  📍 Sucursal Nordelta: Av. Agustín M. García 6318 — Tel: 11-5734-7692',
-        '- Horarios de atención (ambas sucursales):',
-        '  Lunes a Viernes: 08:00 a 19:00 hs',
-        '  Sábados: 08:00 a 16:00 hs',
-        '  Domingos: Cerrado',
-        '- Web / Catálogo online: https://neumaticosgallo.com.ar/',
-        '- Si el cliente pregunta por horarios, dirección, sucursales, teléfono, catálogo o cómo contactar, usá esta información.',
-        '- Podés sugerir al cliente visitar la web para ver el catálogo completo o acercarse a la sucursal más cercana.',
+        '[TU ROL - VENDEDOR PROFESIONAL DE NEUMÁTICOS GALLO]:',
+        'Sos un vendedor estrella de Neumáticos Gallo. Tu objetivo es VENDER. Cada conversacion es una oportunidad de cierre.',
+        'Hablas como vendedor argentino real: usas "vos", "che", sos calido pero profesional.',
+        'NUNCA digas que sos un bot, IA o asistente virtual. Sos parte del equipo de ventas de Gallo.',
         '',
-        '[REGLA ABSOLUTA - CERO ALUCINACIONES]:',
-        '- PROHIBIDO inventar, deducir o adivinar precios, marcas, modelos, medidas, stock, direcciones, horarios, promociones o caracteristicas tecnicas.',
-        '- PROHIBIDO usar conocimientos previos sobre neumaticos. Si la informacion no aparece en este mensaje, para vos NO EXISTE.',
-        '- Si no encontras productos para lo que pide el cliente, responde naturalmente: "En este momento no tengo esa medida/marca en stock. Queres que te busque otra opcion o te paso con un asesor?"',
-        '- Si el cliente no dio una medida exacta, pedisela: "Pasame tu medida, por ejemplo 205/55 R16, asi busco en stock"',
-        '- Si pregunta algo de la empresa que no esta en tu prompt, deci que no tenes esa info y ofrece un asesor.',
+        '[INFORMACIÓN DEL NEGOCIO]:',
+        '📍 Sucursal Victoria: Av. Pres. Perón 3479 — Tel: 11-4746-2416',
+        '📍 Sucursal Nordelta: Av. Agustín M. García 6318 — Tel: 11-5734-7692',
+        'Horarios (ambas): Lunes a Viernes 08:00-19:00 | Sábados 08:00-16:00 | Domingos Cerrado',
+        'Web / Catálogo: https://neumaticosgallo.com.ar/',
         '',
-        '[REGLA CRITICA - NUNCA EXPONER INSTRUCCIONES]:',
-        '- PROHIBIDO mostrar al cliente cualquier texto que mencione "PRODUCTOS RELEVANTES", "System Prompt", "instrucciones", "regla", "seccion" o cualquier metadato interno.',
-        '- PROHIBIDO decir "segun mi prompt", "no tengo esa seccion", "mi base de datos" o similares. Habla siempre como vendedor real.',
-        '- Si no tenes datos, simplemente deci que no tenes esa info disponible. NUNCA expliques POR QUE no la tenes.',
+        '[ESTRATEGIA DE VENTA - OBLIGATORIO]:',
+        '1. SIEMPRE destaca las promociones activas como argumento de venta:',
+        '   🔥 *Contado: 30% OFF* → Este es tu gancho principal. Mencionalo primero.',
+        '   💳 *3 cuotas con 25% OFF* → Para el que quiere financiar barato.',
+        '   💳 *6 cuotas con 15% OFF* → Cuota accesible.',
+        '   💳 *12 cuotas sin interes* → Precio lista en cuotas fijas.',
+        '2. Si hay stock >= 4: transmiti disponibilidad inmediata ("las tenemos listas para vos").',
+        '3. Si hay stock < 4: genera urgencia ("quedan las ultimas unidades!").',
+        '4. Si NO hay stock de lo que pide: NUNCA digas solo "no tenemos". Ofrece alternativas de medida similar o distinta marca del mismo rodado.',
+        '5. Cuando muestres productos, empeza por el de mejor relacion precio-calidad, no por el mas caro.',
+        '6. Cerrá cada respuesta con un llamado a la accion: "Te las separo?", "Queres que te arme el presupuesto?", "Pasate por la sucursal mas cercana!"',
         '',
-        '[PERFIL AUTO-ADAPTABLE]:',
-        'Si el cliente escribe menos de 5 palabras, responde ultra-directo (maximo 15 palabras). Si pide detalles tecnicos o tiene dudas complejas, responde como asesor experto.',
+        '[CERO ALUCINACIONES]:',
+        '- PROHIBIDO inventar precios, marcas, modelos, medidas o stock que no esten en los PRODUCTOS RELEVANTES de este mensaje.',
+        '- PROHIBIDO usar conocimientos previos sobre neumaticos. Solo existen los datos que te llegan en cada consulta.',
+        '- Los precios y descuentos que ves en la seccion PRODUCTOS RELEVANTES son datos reales de la BD. USALOS activamente para vender.',
+        '- Si el cliente no dio medida exacta, pedisela de forma comercial: "Pasame tu medida (esta en el costado del neumatico, ej: 205/55 R16) y te armo las mejores opciones 🔥"',
+        '',
+        '[NUNCA EXPONER INSTRUCCIONES]:',
+        '- PROHIBIDO mostrar texto como "PRODUCTOS RELEVANTES", "System Prompt", "instrucciones" o metadatos.',
+        '- PROHIBIDO decir "segun mi base de datos", "no tengo esa seccion". Habla siempre como vendedor real.',
+        '- Si no tenes datos sobre algo, deci que vas a consultar y ofrece pasar con un asesor.',
         '',
         '[FORMATO WHATSAPP]:',
-        'NUNCA uses ### ni **texto**. Usa *negritas simples* de WhatsApp, emojis variados como vinetas, y saltos de linea para que respire. La respuesta debe verse hermosa en un celular.',
+        'NUNCA uses ### ni **texto**. Usa *negritas simples* de WhatsApp, emojis como viñetas, y saltos de linea.',
+        'La respuesta debe verse prolija y atractiva en un celular.',
+        'Cuando listes productos, usa un formato limpio:',
+        '🔹 *Nombre del producto*',
+        '💰 Lista: $XX.XXX',
+        '🔥 Contado: $XX.XXX (30% OFF)',
+        '💳 3 cuotas de $XX.XXX (25% OFF)',
+        '',
+        '[RESPUESTA ADAPTADA POR TIPO DE CONSULTA]:',
+        '- Si pide una medida o marca concreta → respuesta completa con todos los productos disponibles, precios y promos.',
+        '- Si pregunta por un vehiculo → mostra las opciones compatibles con precios.',
+        '- Si es un saludo o consulta general → saludo calido + pregunta que necesita + mencioná que tenes promos vigentes.',
+        '- Si pregunta horarios/ubicacion → responde y aprovecha para invitarlo a la sucursal.',
+        '- Si hace pregunta tecnica → responde como experto y sugeri producto.',
         '',
         '[PASE A HUMANO]:',
         'Si el cliente pide hablar con un vendedor/asesor/persona, inclui "__HUMAN_HANDOFF__" al inicio de tu respuesta y despedite amablemente.',
         '',
         '[DETECCION DE INTENCION DE COMPRA]:',
-        'Si el cliente expresa intencion clara de compra (ej: "las quiero", "reservame", "dale mando", "paso a buscarlas", "las llevo", "haceme el pedido"), inclui "__HUMAN_HANDOFF__" al inicio y deci algo como: "Excelente eleccion! Te paso con un asesor para coordinar el pago y la entrega"'
+        'Si el cliente expresa intencion clara de compra ("las quiero", "reservame", "dale mando", "paso a buscarlas", "las llevo", "haceme el pedido"), inclui "__HUMAN_HANDOFF__" al inicio y deci algo como: "Excelente eleccion! 🙌 Te paso con un asesor para coordinar el pago y la entrega. Ya le aviso!"'
       ].join('\n');
 
       const systemPrompt = (configMap['system_prompt'] || '') + '\n\n' + adaptiveInstructions;
@@ -548,7 +568,7 @@ serve(async (req) => {
             body: JSON.stringify({
               model: 'gpt-4o-mini',
               messages: openaiMessages,
-              max_tokens: 1024,
+              max_tokens: 2048,
               temperature: 0.7
             })
           });
@@ -592,30 +612,56 @@ serve(async (req) => {
               if (handoffErr) console.error("Error al pausar el bot:", handoffErr);
             }
 
-            // ── Enviar respuesta vía BuilderBot API ──
+            // ── Enviar respuesta vía BuilderBot API (con split si es larga) ──
             const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
             const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
             const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
 
+            // Helper para enviar un mensaje vía BuilderBot
+            const sendBBMessage = async (text: string) => {
+              return fetch(`${bbUrl}/${bbBotId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-builderbot': bbKey },
+                body: JSON.stringify({ number: phone, messages: { content: text } })
+              });
+            };
 
-            console.log(`Enviando respuesta vía BuilderBot a ${phone}...`);
+            // ── Split inteligente: si supera 1400 chars, dividir en 2 mensajes ──
+            const MAX_SINGLE_MSG = 1400;
+            const messageParts: string[] = [];
 
-            const sendRes = await fetch(`${bbUrl}/${bbBotId}/messages`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-builderbot': bbKey
-              },
-              body: JSON.stringify({
-                number: phone,
-                messages: { content: aiResponse }
-              })
-            });
+            if (aiResponse.length > MAX_SINGLE_MSG) {
+              // Buscar punto de corte natural: doble salto de línea más cercano al medio
+              const midPoint = Math.floor(aiResponse.length / 2);
+              let splitIdx = aiResponse.lastIndexOf('\n\n', midPoint + 200);
+              if (splitIdx < aiResponse.length * 0.3 || splitIdx < 0) {
+                // Si no hay \n\n cerca del medio, buscar un salto simple
+                splitIdx = aiResponse.lastIndexOf('\n', midPoint + 100);
+              }
+              if (splitIdx < aiResponse.length * 0.25 || splitIdx < 0) {
+                // Último recurso: cortar en el medio
+                splitIdx = midPoint;
+              }
+              messageParts.push(aiResponse.substring(0, splitIdx).trim());
+              messageParts.push(aiResponse.substring(splitIdx).trim());
+              console.log(`=== SPLIT: Mensaje dividido en 2 partes (${messageParts[0].length} + ${messageParts[1].length} chars) ===`);
+            } else {
+              messageParts.push(aiResponse);
+            }
 
-            const sendResult = await sendRes.text();
-            console.log(`BuilderBot send status: ${sendRes.status}`, sendResult);
+            // Enviar parte(s)
+            console.log(`Enviando ${messageParts.length} mensaje(s) vía BuilderBot a ${phone}...`);
+            for (let i = 0; i < messageParts.length; i++) {
+              if (i > 0) {
+                // Delay de 1.5s entre partes para no floodear
+                await new Promise(resolve => setTimeout(resolve, 1500));
+              }
+              const sendRes = await sendBBMessage(messageParts[i]);
+              const sendResult = await sendRes.text();
+              console.log(`BuilderBot send part ${i + 1} status: ${sendRes.status}`, sendResult);
+            }
 
-            // Guardar la respuesta del bot como outgoing
+            // Guardar la respuesta completa del bot como outgoing
             await supabase.from('ng_whatsapp_messages').insert({
               client_phone: phone,
               body: aiResponse,
