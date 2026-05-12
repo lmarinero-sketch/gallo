@@ -249,7 +249,35 @@ serve(async (req) => {
           await supabase.from('ng_whatsapp_messages').insert({ client_phone: phone, body: welcomeMsg, direction: 'outgoing', message_type: 'text' });
           return new Response(JSON.stringify({ success: true, reason: 'bot_reactivated' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
         } else {
-          console.log(`=== EDGE BOT: Silenciado por Human Handoff (hasta ${new Date(dbClient.bot_paused_until).toLocaleString()}). Ignorando msj. ===`);
+          console.log(`=== EDGE BOT: Pausado por Human Handoff (hasta ${new Date(dbClient.bot_paused_until).toLocaleString()}). ===`);
+          
+          // Responder UNA vez (anti-spam: máx 1 vez cada 30 min) indicando que un asesor lo atiende
+          const { data: recentPausedMsg } = await supabase
+            .from('ng_whatsapp_messages')
+            .select('id')
+            .eq('client_phone', phone)
+            .eq('direction', 'outgoing')
+            .ilike('body', '%asesor%atender%')
+            .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+            .limit(1);
+          
+          if (!recentPausedMsg || recentPausedMsg.length === 0) {
+            const pausedMsg = '¡Hola! 👋 Ya estás siendo atendido por uno de nuestros asesores. Te va a responder enseguida. ¡Gracias por tu paciencia!\u200B';
+            const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
+            const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
+            const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
+            
+            await fetch(`${bbUrl}/${bbBotId}/messages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-builderbot': bbKey },
+              body: JSON.stringify({ number: phone, messages: { content: pausedMsg } })
+            });
+            await supabase.from('ng_whatsapp_messages').insert({ client_phone: phone, body: pausedMsg, direction: 'outgoing', message_type: 'text' });
+            console.log('=== EDGE BOT: Mensaje de cortesía enviado (asesor atendiéndote) ===');
+          } else {
+            console.log('=== EDGE BOT: Mensaje de cortesía ya enviado recientemente. Silenciando. ===');
+          }
+          
           return new Response(JSON.stringify({ success: true, reason: 'bot_paused' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
         }
       }
