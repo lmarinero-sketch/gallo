@@ -268,6 +268,18 @@ serve(async (req) => {
       
       // Auto-Adaptive Profile, Anti-Hallucination & Human Handoff Instructions
       const adaptiveInstructions = [
+        '[INFORMACIÓN DEL NEGOCIO - NEUMÁTICOS GALLO]:',
+        '- Sucursales:',
+        '  📍 Sucursal Victoria: Av. Pres. Perón 3479 — Tel: 11-4746-2416',
+        '  📍 Sucursal Nordelta: Av. Agustín M. García 6318 — Tel: 11-5734-7692',
+        '- Horarios de atención (ambas sucursales):',
+        '  Lunes a Viernes: 08:00 a 19:00 hs',
+        '  Sábados: 08:00 a 16:00 hs',
+        '  Domingos: Cerrado',
+        '- Web / Catálogo online: https://neumaticosgallo.com.ar/',
+        '- Si el cliente pregunta por horarios, dirección, sucursales, teléfono, catálogo o cómo contactar, usá esta información.',
+        '- Podés sugerir al cliente visitar la web para ver el catálogo completo o acercarse a la sucursal más cercana.',
+        '',
         '[REGLA ABSOLUTA - CERO ALUCINACIONES]:',
         '- PROHIBIDO inventar, deducir o adivinar precios, marcas, modelos, medidas, stock, direcciones, horarios, promociones o caracteristicas tecnicas.',
         '- PROHIBIDO usar conocimientos previos sobre neumaticos. Si la informacion no aparece en este mensaje, para vos NO EXISTE.',
