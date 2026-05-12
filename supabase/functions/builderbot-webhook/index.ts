@@ -9,17 +9,19 @@ const corsHeaders = {
 
 // Helper: pre-calcular precios con cuotas y descuentos
 // Muestra el nombre COMPLETO del producto (ej: "YOKOHAMA 225/60 R17 99H E70G ASPEC")
-function formatProductWithPricing(p: any): string {
+function formatProductWithPricing(p: any, promos?: { contado: number; cuotas3: number; cuotas6: number }): string {
   const price = Number(p.price);
-  const stock = Number(p.stock) || 0;
   const fmt = (n: number) => Math.round(n).toLocaleString('es-AR');
-  // Usar el nombre completo del articulo tal cual esta en la BD
+  // Descuentos configurables (defaults: contado 30%, 3 cuotas 25%, 6 cuotas 15%)
+  const dContado = promos?.contado ?? 30;
+  const d3 = promos?.cuotas3 ?? 25;
+  const d6 = promos?.cuotas6 ?? 15;
   let line = '\n* ' + (p.name || [p.brand, p.measure].filter(Boolean).join(' '));
   line += '\nPrecio Lista: $' + fmt(price);
   line += '\n  - 12 cuotas de $' + fmt(price / 12) + ' (Total: $' + fmt(price) + ')';
-  line += '\n  - 6 cuotas de $' + fmt(price * 0.85 / 6) + ' (Total: $' + fmt(price * 0.85) + ') -15%';
-  line += '\n  - 3 cuotas de $' + fmt(price * 0.75 / 3) + ' (Total: $' + fmt(price * 0.75) + ') -25%';
-  line += '\n  - Contado: $' + fmt(price * 0.70) + ' -30%';
+  line += '\n  - 6 cuotas de $' + fmt(price * (1 - d6 / 100) / 6) + ' (Total: $' + fmt(price * (1 - d6 / 100)) + ') -' + d6 + '%';
+  line += '\n  - 3 cuotas de $' + fmt(price * (1 - d3 / 100) / 3) + ' (Total: $' + fmt(price * (1 - d3 / 100)) + ') -' + d3 + '%';
+  line += '\n  - Contado: $' + fmt(price * (1 - dContado / 100)) + ' -' + dContado + '%';
   line += '\n';
   return line;
 }
@@ -265,13 +267,18 @@ serve(async (req) => {
       const { data: configs } = await supabase
         .from('ng_bot_config')
         .select('key, value')
-        .in('key', ['bot_enabled', 'bot_trigger', 'system_prompt']);
+        .in('key', ['bot_enabled', 'bot_trigger', 'system_prompt', 'promo_contado', 'promo_3cuotas', 'promo_6cuotas']);
 
       const configMap: Record<string, string> = {};
       (configs || []).forEach((c: any) => { configMap[c.key] = c.value; });
 
       const botEnabled = configMap['bot_enabled'] === 'true';
       const botTriggerConfig = (configMap['bot_trigger'] || '').toLowerCase().trim();
+      // Promociones configurables desde ng_bot_config
+      const promoContado = Number(configMap['promo_contado']) || 30;
+      const promo3Cuotas = Number(configMap['promo_3cuotas']) || 25;
+      const promo6Cuotas = Number(configMap['promo_6cuotas']) || 15;
+      const promos = { contado: promoContado, cuotas3: promo3Cuotas, cuotas6: promo6Cuotas };
       
       // ══ PERFIL VENDEDOR + Reglas Operativas del Bot ══
       const adaptiveInstructions = [
@@ -288,9 +295,9 @@ serve(async (req) => {
         '',
         '[ESTRATEGIA DE VENTA - OBLIGATORIO]:',
         '1. SIEMPRE destaca las promociones activas como argumento de venta:',
-        '   🔥 *Contado: 30% OFF* → Este es tu gancho principal. Mencionalo primero.',
-        '   💳 *3 cuotas con 25% OFF* → Para el que quiere financiar barato.',
-        '   💳 *6 cuotas con 15% OFF* → Cuota accesible.',
+        '   🔥 *Contado: ' + promoContado + '% OFF* → Este es tu gancho principal. Mencionalo primero.',
+        '   💳 *3 cuotas con ' + promo3Cuotas + '% OFF* → Para el que quiere financiar barato.',
+        '   💳 *6 cuotas con ' + promo6Cuotas + '% OFF* → Cuota accesible.',
         '   💳 *12 cuotas sin interes* → Precio lista en cuotas fijas.',
         '2. Si hay stock >= 4: transmiti disponibilidad inmediata ("las tenemos listas para vos").',
         '3. Si hay stock < 4: genera urgencia ("quedan las ultimas unidades!").',
@@ -329,7 +336,9 @@ serve(async (req) => {
         'Si el cliente expresa intencion clara de compra ("las quiero", "reservame", "dale mando", "paso a buscarlas", "las llevo", "haceme el pedido"), inclui "__HUMAN_HANDOFF__" al inicio y deci algo como: "Excelente eleccion! 🙌 Te paso con un asesor para coordinar el pago y la entrega. Ya le aviso!"'
       ].join('\n');
 
-      const systemPrompt = (configMap['system_prompt'] || '') + '\n\n' + adaptiveInstructions;
+      // DB system_prompt va DESPUES para que pueda sobrescribir instrucciones base
+      const dbPrompt = configMap['system_prompt'] || '';
+      const systemPrompt = adaptiveInstructions + (dbPrompt ? '\n\n[INSTRUCCIONES ADICIONALES DEL ADMINISTRADOR - PRIORIDAD MAXIMA]:\n' + dbPrompt : '');
 
       console.log(`Bot enabled: ${botEnabled}, TriggerConfig: "${botTriggerConfig}"`);
 
@@ -459,7 +468,7 @@ serve(async (req) => {
               
               if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
-                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
               } else {
                 // ── FALLBACK: medida exacta sin stock → buscar por rodado Rxx ──
                 console.log('=== FALLBACK: medida exacta sin resultados. Buscando alternativas por aro R' + aro + ' ===');
@@ -474,7 +483,7 @@ serve(async (req) => {
                   if (altProducts.length > 0) {
                     productContext = '\n\n# NO HAY STOCK DE ' + searchMeasure + ' — ALTERNATIVAS DISPONIBLES EN RODADO R' + aro + '\n';
                     productContext += '(El cliente pidio ' + searchMeasure + ' pero no hay stock. Mostra estas opciones como alternativas de rodado R' + aro + ')\n';
-                    altProducts.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                    altProducts.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
                     console.log('Fallback: ' + altProducts.length + ' alternativas R' + aro + ' encontradas');
                   }
                 } catch(fallbackErr: any) { console.error('Error fallback aro: ' + fallbackErr.message); }
@@ -495,7 +504,7 @@ serve(async (req) => {
 
               if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES ARO ' + aro + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
-                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
                 console.log('Encontrados ' + products.length + ' productos aro ' + aro);
               }
             } catch(e: any) { console.error('Error busqueda aro: ' + e.message); }
@@ -513,7 +522,7 @@ serve(async (req) => {
 
               if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS COMPATIBLES CON ' + mentionedVehicle.toUpperCase() + ' (medidas ' + measures.join(', ') + ')\n';
-                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
                 console.log('Encontrados ' + products.length + ' para ' + mentionedVehicle);
               }
             } catch(e: any) { console.error('Error busqueda vehiculo: ' + e.message); }
@@ -527,7 +536,7 @@ serve(async (req) => {
 
               if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES DE ' + mentionedBrand.toUpperCase() + '\n';
-                products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                products.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
                 console.log('Encontrados ' + products.length + ' de ' + mentionedBrand);
               }
             } catch(e: any) { console.error('Error busqueda marca: ' + e.message); }
@@ -544,7 +553,7 @@ serve(async (req) => {
 
                 if (products.length > 0) {
                   productContext = '\n\n# PRODUCTOS ENCONTRADOS\n';
-                  products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                  products.forEach((p: any) => { productContext += formatProductWithPricing(p, promos); });
                   console.log('Encontrados ' + products.length + ' por keywords');
                 }
               } catch(e: any) { console.error('Error busqueda keywords: ' + e.message); }
