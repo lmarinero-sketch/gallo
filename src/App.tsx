@@ -1143,6 +1143,7 @@ function Messenger() {
     };
 
     const { error } = await supabase.from('ng_whatsapp_messages').insert([{
+      id: optimisticMessage.id,
       client_phone: activeContact,
       body: newMessage,
       direction: 'outgoing',
@@ -1206,7 +1207,9 @@ function Messenger() {
     return formatted.trim();
   };
 
-  const activeMessages = messages.filter(m => m.client_phone === activeContact).reverse();
+  const activeMessages = messages
+    .filter(m => m.client_phone === activeContact)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   useEffect(() => {
     scrollToBottom();
