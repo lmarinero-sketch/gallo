@@ -224,22 +224,9 @@ serve(async (req) => {
 
       if (isPaused) {
         if (isTriggerWord) {
-          console.log(`=== EDGE BOT: Palabra Trigger detectada ("${triggerWord}"). Reactivando bot... ===`);
+          console.log(`=== EDGE BOT: Palabra Trigger detectada ("${triggerWord}"). Reactivando bot y procesando consulta... ===`);
           await supabase.from('ng_clients').update({ bot_paused_until: null }).eq('phone', phone);
-          
-          const welcomeMsg = "¡Hola de nuevo! Ya estoy activo para ayudarte. ¿En qué nos quedamos? 🤖";
-          const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
-          const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
-          const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
-          
-          await fetch(`${bbUrl}/${bbBotId}/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-builderbot': bbKey },
-            body: JSON.stringify({ number: phone, messages: { content: welcomeMsg } })
-          });
-          
-          await supabase.from('ng_whatsapp_messages').insert({ client_phone: phone, body: welcomeMsg, direction: 'outgoing', message_type: 'text' });
-          return new Response(JSON.stringify({ success: true, reason: 'bot_reactivated' }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+          // No hacer return: dejar que el flujo continúe y GPT procese la consulta real
         } else {
           console.log(`=== EDGE BOT: Pausado por Human Handoff (hasta ${new Date(dbClient.bot_paused_until).toLocaleString()}). ===`);
           
