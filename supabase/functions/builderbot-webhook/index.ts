@@ -442,14 +442,34 @@ serve(async (req) => {
               
               if (err1) console.log('ERROR search: ' + JSON.stringify(err1));
               let products = filterRF(rawProducts || []);
+              // Filtrar por marca si fue mencionada, pero guardar los sin filtro como respaldo
+              const allProducts = [...products];
               if (mentionedBrand) products = products.filter((p: any) => (p.brand || '').toLowerCase().includes(mentionedBrand));
+              // Si el filtro de marca elimina todo, usar los sin filtro
+              if (products.length === 0 && allProducts.length > 0) products = allProducts;
               console.log('Resultado: ' + (rawProducts ? rawProducts.length : 0) + ' raw, ' + products.length + ' filtered');
               
               if (products.length > 0) {
                 productContext = '\n\n# PRODUCTOS DISPONIBLES PARA MEDIDA ' + searchMeasure + (mentionedBrand ? ' (' + mentionedBrand.toUpperCase() + ')' : '') + '\n';
                 products.forEach((p: any) => { productContext += formatProductWithPricing(p); });
               } else {
-                // Ya no se necesitan fallbacks: la query OR cubre ambos formatos
+                // ── FALLBACK: medida exacta sin stock → buscar por rodado Rxx ──
+                console.log('=== FALLBACK: medida exacta sin resultados. Buscando alternativas por aro R' + aro + ' ===');
+                try {
+                  const { data: aroProducts } = await supabase.from('ng_products')
+                    .select('name, brand, measure, price, stock')
+                    .ilike('measure', '%R' + aro + '%')
+                    .gt('stock', 3)
+                    .order('price', { ascending: false })
+                    .limit(15);
+                  const altProducts = filterRF(aroProducts || []);
+                  if (altProducts.length > 0) {
+                    productContext = '\n\n# NO HAY STOCK DE ' + searchMeasure + ' — ALTERNATIVAS DISPONIBLES EN RODADO R' + aro + '\n';
+                    productContext += '(El cliente pidio ' + searchMeasure + ' pero no hay stock. Mostra estas opciones como alternativas de rodado R' + aro + ')\n';
+                    altProducts.forEach((p: any) => { productContext += formatProductWithPricing(p); });
+                    console.log('Fallback: ' + altProducts.length + ' alternativas R' + aro + ' encontradas');
+                  }
+                } catch(fallbackErr: any) { console.error('Error fallback aro: ' + fallbackErr.message); }
               }
             } catch(searchError: any) {
               console.error('ERROR CRITICO en busqueda por medida: ' + searchError.message);
