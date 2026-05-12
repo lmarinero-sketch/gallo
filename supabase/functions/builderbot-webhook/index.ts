@@ -211,8 +211,8 @@ serve(async (req) => {
       // Obtener el estado del cliente para ver si el bot está pausado
       const { data: dbClient } = await supabase.from('ng_clients').select('bot_paused_until').eq('phone', phone).single();
       
-      const triggerWord = "asistente";
-      const isTriggerWord = bodyText.toLowerCase().includes(triggerWord);
+      const triggerWord = "edge";
+      const isTriggerWord = bodyText.toLowerCase().includes("edge") || bodyText.toLowerCase().includes("asistente");
       
       let isPaused = false;
       if (dbClient && dbClient.bot_paused_until) {
@@ -254,7 +254,7 @@ serve(async (req) => {
             .limit(1);
           
           if (!recentPausedMsg || recentPausedMsg.length === 0) {
-            const pausedMsg = '¡Hola! 👋 Ya estás siendo atendido por uno de nuestros asesores. Te va a responder enseguida. ¡Gracias por tu paciencia!\u200B';
+            const pausedMsg = '¡Hola! 👋 Ya estás siendo atendido por uno de nuestros asesores. Te va a responder enseguida.\n\nSi querés volver a consultar precios o stock con nuestro asistente automático, escribí *' + triggerWord + '*. ¡Gracias por tu paciencia!\u200B';
             const bbUrl = Deno.env.get("BUILDERBOT_API_URL") || "";
             const bbKey = Deno.env.get("BUILDERBOT_API_KEY") || "";
             const bbBotId = Deno.env.get("BUILDERBOT_BOT_ID") || "";
