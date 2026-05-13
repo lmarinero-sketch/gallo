@@ -147,17 +147,20 @@ serve(async (req) => {
         await supabase.from('ng_clients').update({ bot_paused_until: midnight.toISOString() }).eq('phone', phone);
       }
 
+      // Deduplicación robusta: usar primeros 80 chars del body como prefijo
+      // y ventana de 120s para cubrir latencia de OpenAI + BuilderBot
+      const bodyPrefix = (body || '').replace(/\u200B/g, '').trim().substring(0, 80);
       const { data: recentMsg } = await supabase
         .from('ng_whatsapp_messages')
         .select('id')
-        .eq('body', body)
         .eq('client_phone', phone)
         .eq('direction', 'outgoing')
-        .gte('created_at', new Date(Date.now() - 15000).toISOString())
+        .gte('created_at', new Date(Date.now() - 120000).toISOString())
+        .ilike('body', bodyPrefix + '%')
         .limit(1);
 
       if (recentMsg && recentMsg.length > 0) {
-        console.log("Mensaje saliente duplicado. Ignorando.");
+        console.log("Mensaje saliente duplicado (dedup 120s prefix). Ignorando.");
         return new Response(JSON.stringify({ success: true, reason: 'duplicate' }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,

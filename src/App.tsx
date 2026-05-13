@@ -930,11 +930,14 @@ function Messenger() {
         (payload) => {
           console.log('[Realtime] Nuevo mensaje recibido:', payload.new?.direction, payload.new?.body?.substring(0, 40));
           setMessages(prev => {
-            // Deduplicar: si ya existe un mensaje con el mismo id o mismo body+phone en los últimos 30s, no agregar
+            // Deduplicar: check id exacto O body+phone con prefijo (80 chars, strip ZWS) en ventana de 120s
+            const newBody = (payload.new.body || '').replace(/\u200B/g, '').trim();
+            const newBodyPrefix = newBody.substring(0, 80);
             const isDuplicate = prev.some(m => 
               m.id === payload.new.id || 
-              (m.body === payload.new.body && m.client_phone === payload.new.client_phone && 
-               Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 30000)
+              (m.client_phone === payload.new.client_phone && 
+               (m.body || '').replace(/\u200B/g, '').trim().substring(0, 80) === newBodyPrefix &&
+               Math.abs(new Date(m.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 120000)
             );
             if (isDuplicate) {
               console.log('[Realtime] Mensaje duplicado, ignorando');
