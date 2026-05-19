@@ -1210,9 +1210,39 @@ function Messenger() {
     return formatted.trim();
   };
 
+  // ── Heurística para corregir direction mal clasificado ──
+  // Detecta mensajes outgoing que fueron guardados como incoming por error del webhook
+  const getMessageDirection = (msg: any): string => {
+    if (msg.direction === 'outgoing') return 'outgoing';
+    
+    const body = msg.body || '';
+    
+    // 1. Marca de agua invisible del bot IA (Zero-Width Space \u200B)
+    if (body.includes('\u200B')) return 'outgoing';
+    
+    // 2. Patrones de presupuesto/venta del bot (mensajes largos con precios)
+    if (body.length > 200 && (
+      body.includes('Precio lista:') || body.includes('Precio Lista:') ||
+      body.includes('cuotas de $') || body.includes('Contado $') || body.includes('Contado:') ||
+      body.includes('Te paso presupuesto') || body.includes('te paso presupuesto')
+    )) return 'outgoing';
+    
+    // 3. Frases típicas del vendedor/bot
+    if (
+      body.includes('asistente automático') ||
+      (body.includes('asesor') && body.includes('atender')) ||
+      body.includes('sucursal más cercana') || body.includes('sucursal mas cercana') ||
+      body.includes('te las separo') ||
+      (body.includes('Runflat') && body.includes('precisabas'))
+    ) return 'outgoing';
+    
+    return msg.direction || 'incoming';
+  };
+
   const activeMessages = messages
     .filter(m => m.client_phone === activeContact)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map(m => ({ ...m, direction: getMessageDirection(m) }));
 
   useEffect(() => {
     scrollToBottom();

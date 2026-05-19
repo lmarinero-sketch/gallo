@@ -40,11 +40,20 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Detectar dirección usando eventName (BuilderBot real payload) ──
+    // ── Detectar dirección usando eventName + señales adicionales del payload ──
     const eventName = payload.eventName || "unknown";
     const data = payload.data || payload;
 
-    const isOutgoing = eventName === "message.outgoing";
+    // Señales múltiples para detectar outgoing:
+    // 1. eventName contiene "outgoing" o "send" (BuilderBot estándar)
+    // 2. Campo "answer" presente (respuestas del bot/sistema)
+    // 3. Campo "fromMe" === true (WhatsApp Business API)
+    // 4. Campo "to" presente sin "from" (envío directo)
+    const isOutgoing = eventName === "message.outgoing" 
+      || eventName.includes("outgoing") 
+      || eventName.includes("send")
+      || data.fromMe === true
+      || (data.answer && !data.body);
     const computedDirection = isOutgoing ? 'outgoing' : 'incoming';
 
     // ── Extraer body: incoming usa data.body, outgoing usa data.answer ──
