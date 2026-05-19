@@ -798,7 +798,7 @@ function Messenger() {
       showSystemModal('Error', 'No se pudo agendar el seguimiento.', 'error');
     }
   };
-  const PAGE_SIZE = 1500;
+  const PAGE_SIZE = 1000;
   
   const [activeContact, setActiveContact] = useState<string | null>(null);
   const [activeContactInfo, setActiveContactInfo] = useState<any>(null);
@@ -1021,30 +1021,37 @@ function Messenger() {
       if (isLoadMore) setLoadingMore(true);
       else setLoading(true);
 
-      const targetPage = isLoadMore ? page + 1 : 0;
-      const _from = targetPage * PAGE_SIZE;
-      const _to = _from + PAGE_SIZE - 1;
-
-      const { data, error } = await supabase
-        .from('ng_whatsapp_messages')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(_from, _to);
-        
-      if (error) throw error;
-      
-      const newMessages = data || [];
-      if (newMessages.length < PAGE_SIZE) {
-        setHasMore(false);
-      } else if (!isLoadMore) {
-        setHasMore(true);
-      }
-      
-      const combinedMessages = isLoadMore ? [...messages, ...newMessages] : newMessages;
-      setMessages(combinedMessages);
-      setPage(targetPage);
-      
       if (!isLoadMore) {
+        // ── Fetch recursivo: traer TODOS los mensajes en bloques de 1000 ──
+        let allMessages: any[] = [];
+        let currentPage = 0;
+        let keepFetching = true;
+
+        while (keepFetching) {
+          const _from = currentPage * PAGE_SIZE;
+          const _to = _from + PAGE_SIZE - 1;
+          const { data, error } = await supabase
+            .from('ng_whatsapp_messages')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(_from, _to);
+          
+          if (error) throw error;
+          const batch = data || [];
+          allMessages = [...allMessages, ...batch];
+          
+          if (batch.length < PAGE_SIZE) {
+            keepFetching = false;
+          } else {
+            currentPage++;
+          }
+        }
+
+        console.log(`[Fetch] Total mensajes cargados: ${allMessages.length}`);
+        setMessages(allMessages);
+        setHasMore(false);
+        setPage(0);
+
         const { data: cData } = await supabase.from('ng_clients').select('*');
         const clientsMap: Record<string, string> = {};
         if (cData) {
@@ -1052,8 +1059,8 @@ function Messenger() {
         }
         setActiveClientsMap(clientsMap);
 
-        if (newMessages.length > 0) {
-          const firstContact = Array.from(new Set(newMessages.map(m => m.client_phone)))[0];
+        if (allMessages.length > 0) {
+          const firstContact = Array.from(new Set(allMessages.map(m => m.client_phone)))[0];
           setActiveContact(firstContact as string);
         }
       }
@@ -1268,13 +1275,67 @@ function Messenger() {
   const renderMedia = (msg: any) => {
     if (!msg.attachment_urls || msg.attachment_urls.length === 0) return null;
     const url = msg.attachment_urls[0];
-    const urlLower = url.toLowerCase();
+    const urlLower = (url || '').toLowerCase();
     
-    if (urlLower.match(/\.(jpeg|jpg|gif|png|webp)/) || msg.body.includes("imagen") || msg.message_type === 'image') {
-      return <img src={url} alt="Archivo adjunto" className="max-w-[240px] rounded-lg mt-2 cursor-pointer shadow-sm border border-slate-200" />;
+    // Verificar si la URL es válida (empieza con http/https)
+    const isValidUrl = url && (url.startsWith('http://') || url.startsWith('https://'));
+    
+    // Si la URL no es válida (es un ID interno de BuilderBot), mostrar placeholder
+    if (!isValidUrl) {
+      const type = msg.message_type || 'media';
+      if (type === 'image' || type === 'sticker') {
+        return (
+          <div className="mt-2 bg-slate-100 rounded-lg p-4 flex items-center justify-center border border-slate-200 max-w-[240px]">
+            <div className="text-center">
+              <span className="text-2xl">📷</span>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Imagen (archivo temporal expirado)</p>
+            </div>
+          </div>
+        );
+      }
+      if (type === 'audio' || type === 'voice' || type === 'ptt') {
+        return (
+          <div className="mt-2 bg-slate-100 rounded-lg p-3 flex items-center border border-slate-200 max-w-[240px]">
+            <span className="text-lg mr-2">🎵</span>
+            <p className="text-[11px] text-slate-400 font-medium">Audio (archivo temporal expirado)</p>
+          </div>
+        );
+      }
+      if (type === 'video') {
+        return (
+          <div className="mt-2 bg-slate-100 rounded-lg p-4 flex items-center justify-center border border-slate-200 max-w-[240px]">
+            <div className="text-center">
+              <span className="text-2xl">🎬</span>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Video (archivo temporal expirado)</p>
+            </div>
+          </div>
+        );
+      }
+      if (type === 'document') {
+        return (
+          <div className="mt-2 bg-slate-100 rounded-lg p-3 flex items-center border border-slate-200 max-w-[240px]">
+            <FileText className="w-4 h-4 mr-2 text-slate-400" />
+            <p className="text-[11px] text-slate-400 font-medium">Documento (archivo temporal expirado)</p>
+          </div>
+        );
+      }
+      return (
+        <div className="mt-2 bg-slate-100 rounded-lg p-3 flex items-center border border-slate-200 max-w-[240px]">
+          <Upload className="w-4 h-4 mr-2 text-slate-400" />
+          <p className="text-[11px] text-slate-400 font-medium">Archivo adjunto (no disponible)</p>
+        </div>
+      );
     }
-    if (urlLower.match(/\.(mp4|ogg|oga|mp3|wav)/) || msg.message_type === 'audio' || msg.message_type === 'voice') {
+    
+    // URLs válidas: renderizar normalmente
+    if (urlLower.match(/\.(jpeg|jpg|gif|png|webp)/) || msg.message_type === 'image' || msg.message_type === 'sticker') {
+      return <img src={url} alt="Archivo adjunto" className="max-w-[240px] rounded-lg mt-2 cursor-pointer shadow-sm border border-slate-200" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
+    }
+    if (urlLower.match(/\.(mp4|ogg|oga|mp3|wav)/) || msg.message_type === 'audio' || msg.message_type === 'voice' || msg.message_type === 'ptt') {
       return <audio controls src={url} className="w-[240px] mt-2 h-10 outline-none" />;
+    }
+    if (urlLower.match(/\.(mp4|webm|mov)/) || msg.message_type === 'video') {
+      return <video controls src={url} className="max-w-[280px] rounded-lg mt-2 shadow-sm border border-slate-200" />;
     }
     if (urlLower.match(/\.(pdf)/) || msg.message_type === 'document') {
       return (
@@ -1283,6 +1344,11 @@ function Messenger() {
           <span className="text-xs font-bold truncate max-w-[180px]">Ver Documento PDF</span>
         </a>
       );
+    }
+    
+    // Fallback: intentar mostrar como imagen si message_type es 'media'
+    if (msg.message_type === 'media') {
+      return <img src={url} alt="Archivo adjunto" className="max-w-[240px] rounded-lg mt-2 cursor-pointer shadow-sm border border-slate-200" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />;
     }
     
     return (
