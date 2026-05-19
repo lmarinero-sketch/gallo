@@ -1798,7 +1798,7 @@ function Messenger() {
 
             <div className="flex-1 overflow-y-auto p-6 z-10 flex flex-col">
               {activeMessages.map((msg: any) => (
-                <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] ${msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
+                <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] group/msg ${msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
                   <div className={`px-4 py-3 rounded-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.1)] relative
                     ${msg.direction === 'outgoing' 
                       ? 'bg-blue-600 text-white rounded-tr-sm' 
@@ -1814,6 +1814,28 @@ function Messenger() {
                       {new Date(msg.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                       {msg.direction === 'outgoing' && <span className="ml-1 text-[10px]">✓✓</span>}
                     </div>
+
+                    {/* Toggle direction button - visible on hover */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const newDir = msg.direction === 'outgoing' ? 'incoming' : 'outgoing';
+                        const { error } = await supabase
+                          .from('ng_whatsapp_messages')
+                          .update({ direction: newDir })
+                          .eq('id', msg.id);
+                        if (!error) {
+                          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, direction: newDir } : m));
+                        }
+                      }}
+                      className={`absolute -top-2 ${msg.direction === 'outgoing' ? '-left-8' : '-right-8'} opacity-0 group-hover/msg:opacity-100 transition-opacity w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-md border
+                        ${msg.direction === 'outgoing' 
+                          ? 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50' 
+                          : 'bg-blue-500 text-white border-blue-400 hover:bg-blue-600'}`}
+                      title={msg.direction === 'outgoing' ? 'Marcar como recibido' : 'Marcar como enviado'}
+                    >
+                      ↔
+                    </button>
                   </div>
                 </div>
               ))}

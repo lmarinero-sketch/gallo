@@ -40,20 +40,28 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Detectar dirección usando eventName + señales adicionales del payload ──
+    // ── Detectar dirección usando eventName + señales profundas del payload ──
     const eventName = payload.eventName || "unknown";
     const data = payload.data || payload;
+    const key = data.key || {};
+
+    // Log profundo para debug de detección de dirección
+    console.log(`[DIRECTION DEBUG] eventName="${eventName}" fromMe=${data.fromMe} key.fromMe=${key.fromMe} key.id="${(key.id || '').substring(0, 30)}" status="${data.status}" hasAnswer=${!!data.answer} hasBody=${!!data.body}`);
 
     // Señales múltiples para detectar outgoing:
     // 1. eventName contiene "outgoing" o "send" (BuilderBot estándar)
-    // 2. Campo "answer" presente (respuestas del bot/sistema)
-    // 3. Campo "fromMe" === true (WhatsApp Business API)
-    // 4. Campo "to" presente sin "from" (envío directo)
+    // 2. Campo "fromMe" === true (WhatsApp Business API, nivel data o key)
+    // 3. key.id empieza con "true_" (patrón interno de WA para msgs enviados)
+    // 4. Campo "answer" presente sin "body" (respuestas del bot)
+    // 5. status es SERVER_ACK/DELIVERY_ACK/READ (solo msgs enviados tienen esto)
     const isOutgoing = eventName === "message.outgoing" 
       || eventName.includes("outgoing") 
       || eventName.includes("send")
       || data.fromMe === true
-      || (data.answer && !data.body);
+      || key.fromMe === true
+      || (typeof key.id === 'string' && key.id.startsWith('true_'))
+      || (data.answer && !data.body)
+      || ['SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED'].includes(data.status);
     const computedDirection = isOutgoing ? 'outgoing' : 'incoming';
 
     // ── Extraer body: incoming usa data.body, outgoing usa data.answer ──
