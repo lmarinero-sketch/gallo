@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase';
 import GallitoWidget from './GallitoWidget';
 import ProductosPanel from './ProductosPanel';
+import TireAnimation from './components/TireAnimation';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -148,15 +149,16 @@ function TopBar({ title, subtitle }: { title: string, subtitle: string }) {
   const formattedDate = new Intl.DateTimeFormat('es-AR', dateOptions).format(new Date());
 
   return (
-    <header className="h-[88px] bg-white/80 backdrop-blur-md flex items-center justify-between px-10 sticky top-0 z-10 transition-colors">
-      <div className="flex items-center">
+    <header className="h-[88px] bg-white/80 backdrop-blur-md flex items-center justify-between px-10 sticky top-0 z-10 transition-colors overflow-hidden relative">
+      <TireAnimation />
+      <div className="flex items-center relative z-10">
         <div>
           <h1 className="text-[22px] text-slate-800"><span className="font-bold">Administración</span> {title}</h1>
           <p className="text-sm text-slate-400 mt-0.5">{subtitle}</p>
         </div>
       </div>
       
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-3 relative z-10">
         <div className="bg-slate-100 px-4 py-2 rounded-full text-[13px] font-medium text-slate-600 capitalize">
           {formattedDate}
         </div>
@@ -804,6 +806,7 @@ function Messenger() {
   const [activeContactInfo, setActiveContactInfo] = useState<any>(null);
   const [activeClientsMap, setActiveClientsMap] = useState<Record<string, string>>({});
   const [newMessage, setNewMessage] = useState("");
+  const [isInternalNote, setIsInternalNote] = useState(false);
   const [showWaPicker, setShowWaPicker] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1149,6 +1152,7 @@ function Messenger() {
       body: newMessage,
       direction: 'outgoing',
       message_type: 'text',
+      is_internal: isInternalNote,
       created_at: new Date().toISOString()
     };
 
@@ -1157,7 +1161,8 @@ function Messenger() {
       client_phone: activeContact,
       body: newMessage,
       direction: 'outgoing',
-      message_type: 'text'
+      message_type: 'text',
+      is_internal: isInternalNote
     }]);
 
     if (error) {
@@ -1165,6 +1170,11 @@ function Messenger() {
       showSystemModal("Error en Base de Datos", "No se pudo guardar el mensaje: " + error.message, "error");
     } else {
       setMessages(prev => [optimisticMessage, ...prev]);
+    }
+
+    if (isInternalNote) {
+      setIsInternalNote(false);
+      return;
     }
 
     // Send to BuilderBot Cloud
@@ -1811,13 +1821,16 @@ function Messenger() {
 
             <div className="flex-1 overflow-y-auto p-6 z-10 flex flex-col">
               {activeMessages.map((msg: any) => (
-                <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] group/msg ${msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
+                <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] group/msg ${msg.is_internal ? 'self-center max-w-[85%]' : msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
                   <div className={`px-4 py-3 relative transition-all border-transparent
-                    ${msg.direction === 'outgoing' 
-                      ? 'bg-blue-600 text-white rounded-[24px] rounded-br-sm shadow-[0_2px_8px_rgba(37,99,235,0.25)]' 
-                      : 'bg-[#f8fafc] text-slate-800 rounded-[24px] rounded-bl-sm shadow-sm'
+                    ${msg.is_internal 
+                      ? 'bg-amber-50 text-amber-900 rounded-[16px] shadow-sm border border-amber-200/60'
+                      : msg.direction === 'outgoing' 
+                        ? 'bg-blue-600 text-white rounded-[24px] rounded-br-sm shadow-[0_2px_8px_rgba(37,99,235,0.25)]' 
+                        : 'bg-[#f8fafc] text-slate-800 rounded-[24px] rounded-bl-sm shadow-sm'
                     }`}
                   >
+                    {msg.is_internal && <div className="text-[10px] font-bold text-amber-600 mb-1 flex items-center uppercase tracking-wider"><Lock className="w-3 h-3 mr-1"/> Nota Privada</div>}
                     {renderMedia(msg)}
                     {msg.body && msg.body !== 'Multimedia' && typeof msg.body === 'string' && !msg.body.startsWith('_event_media_') && (
                       <p className="text-[14px] leading-loose whitespace-pre-wrap font-medium">{formatMessageBody(msg.body)}</p>
@@ -1974,12 +1987,12 @@ function Messenger() {
                     
                     {/* Simulated Tabs */}
                     <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-slate-50">
-                      <button className="text-[12px] font-bold bg-slate-800 text-white px-3.5 py-1.5 rounded-full shadow-sm">Responder</button>
-                      <button className="text-[12px] font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-3.5 py-1.5 rounded-full transition-colors flex items-center"><MessageSquare className="w-3 h-3 mr-1"/> Nota privada</button>
+                      <button onClick={() => setIsInternalNote(false)} className={`text-[12px] font-bold px-3.5 py-1.5 rounded-full transition-all ${!isInternalNote ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>Responder</button>
+                      <button onClick={() => setIsInternalNote(true)} className={`text-[12px] font-bold px-3.5 py-1.5 rounded-full transition-all flex items-center ${isInternalNote ? 'bg-amber-100 text-amber-800 shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 font-medium'}`}><MessageSquare className="w-3 h-3 mr-1"/> Nota privada</button>
                     </div>
 
                     {/* Input Area */}
-                    <div className="flex items-end p-2 relative">
+                    <div className={`flex items-end p-2 relative transition-colors rounded-b-2xl ${isInternalNote ? 'bg-amber-50/50' : ''}`}>
                       <div className="relative z-10 flex-shrink-0">
                         <button 
                           type="button"
@@ -2053,24 +2066,24 @@ function Messenger() {
                           type="text" 
                           value={newMessage}
                           onChange={(e) => {
-                            if (is24hExpired && !e.target.value.startsWith('/') && e.target.value.length > 0) {
+                            if (is24hExpired && !e.target.value.startsWith('/') && e.target.value.length > 0 && !isInternalNote) {
                               showSystemModal("Sesión Expirada", "Solo puedes utilizar Plantillas '/' para retomar el diálogo.", "error");
                               setNewMessage(e.target.value.startsWith('/') ? e.target.value : "/");
                               return;
                             }
                             handleInputChange(e);
                           }}
-                          placeholder={is24hExpired ? "Escribe '/' para elegir plantilla..." : "Shift + enter para nueva línea. Comience con '/' para seleccionar respuesta..."} 
+                          placeholder={is24hExpired && !isInternalNote ? "Escribe '/' para elegir plantilla..." : isInternalNote ? "Escribe una nota interna (solo visible para el equipo)..." : "Shift + enter para nueva línea. Comience con '/' para seleccionar respuesta..."} 
                           className={`w-full bg-transparent px-3 py-2.5 text-[14px] focus:outline-none transition-all placeholder:text-slate-400
-                            ${is24hExpired ? 'text-amber-900' : 'text-slate-800'}`}
+                            ${is24hExpired && !isInternalNote ? 'text-amber-900' : isInternalNote ? 'text-amber-900 font-medium' : 'text-slate-800'}`}
                         />
                       </form>
 
                       <button 
                         onClick={handleSendMessage}
-                        disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/'))}
+                        disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/') && !isInternalNote)}
                         className={`w-10 h-10 flex-shrink-0 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all ml-1
-                          ${is24hExpired ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700 shadow-[0_2px_10px_rgba(37,99,235,0.3)]'}
+                          ${is24hExpired && !isInternalNote ? 'bg-amber-500 hover:bg-amber-600' : isInternalNote ? 'bg-amber-500 hover:bg-amber-600 shadow-[0_2px_10px_rgba(245,158,11,0.3)]' : 'bg-blue-600 hover:bg-blue-700 shadow-[0_2px_10px_rgba(37,99,235,0.3)]'}
                         `}
                       >
                         <div style={{transform: "rotate(45deg) translate(-1px, 1px)"}}><Upload className="w-4 h-4" /></div>
