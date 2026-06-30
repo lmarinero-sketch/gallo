@@ -1273,7 +1273,19 @@ function Messenger() {
   }, [activeMessages]);
 
   const renderMedia = (msg: any) => {
-    if (!msg.attachment_urls || msg.attachment_urls.length === 0) return null;
+    if (!msg.attachment_urls || msg.attachment_urls.length === 0) {
+      if (typeof msg.body === 'string' && msg.body.startsWith('_event_media_')) {
+        return (
+          <div className="mt-2 bg-slate-100/20 rounded-lg p-4 flex items-center justify-center border border-slate-200/30 max-w-[240px]">
+            <div className="text-center">
+              <span className="text-2xl">📷</span>
+              <p className="text-[10px] opacity-80 mt-1 font-medium">Imagen / Media</p>
+            </div>
+          </div>
+        );
+      }
+      return null;
+    }
     const url = msg.attachment_urls[0];
     const urlLower = (url || '').toLowerCase();
     
@@ -1390,7 +1402,7 @@ function Messenger() {
                 <div 
                   key={c.phone} 
                   onClick={() => setActiveContact(c.phone)}
-                  className={`flex items-start p-3 cursor-pointer border-b border-slate-50 transition-colors ${isActive ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                  className={`flex items-start p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-blue-50/70 shadow-sm ring-1 ring-blue-100/50' : 'hover:bg-slate-50 border-b border-transparent'}`}
                 >
                   <img src="/images.png" alt="Cliente" className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm mr-3 border border-slate-200" />
                   <div className="flex-1 min-w-0">
@@ -1403,8 +1415,9 @@ function Messenger() {
                     <p className={`text-[12px] truncate ${isActive ? 'text-blue-600 font-medium' : 'text-slate-500'}`}>
                       {c.lastMessage.message_type === 'media' ? '📷 Imagen/Audio adjunto' : c.lastMessage.body}
                     </p>
-                    <div className="mt-1">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[9px] font-bold uppercase tracking-wider">Business</span>
+                    <div className="flex items-center mt-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse shadow-[0_0_4px_rgba(34,197,94,0.5)]"></span>
+                      <span className="text-slate-400 text-[10px] font-medium">WhatsApp</span>
                     </div>
                   </div>
                 </div>
@@ -1799,14 +1812,14 @@ function Messenger() {
             <div className="flex-1 overflow-y-auto p-6 z-10 flex flex-col">
               {activeMessages.map((msg: any) => (
                 <div key={msg.id} className={`flex flex-col mb-4 max-w-[75%] group/msg ${msg.direction === 'outgoing' ? 'self-end items-end' : 'self-start items-start'}`}>
-                  <div className={`px-4 py-3 rounded-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.1)] relative
+                  <div className={`px-4 py-3 relative transition-all border-transparent
                     ${msg.direction === 'outgoing' 
-                      ? 'bg-blue-600 text-white rounded-tr-sm' 
-                      : 'bg-white border border-slate-100 text-slate-800 rounded-tl-sm'
+                      ? 'bg-blue-600 text-white rounded-[24px] rounded-br-sm shadow-[0_2px_8px_rgba(37,99,235,0.25)]' 
+                      : 'bg-[#f8fafc] text-slate-800 rounded-[24px] rounded-bl-sm shadow-sm'
                     }`}
                   >
                     {renderMedia(msg)}
-                    {msg.body && msg.body !== 'Multimedia' && (
+                    {msg.body && msg.body !== 'Multimedia' && typeof msg.body === 'string' && !msg.body.startsWith('_event_media_') && (
                       <p className="text-[14px] leading-loose whitespace-pre-wrap font-medium">{formatMessageBody(msg.body)}</p>
                     )}
                     
@@ -1949,120 +1962,122 @@ function Messenger() {
                 </div>
               )}
 
-                <div className="bg-white p-4 shrink-0 flex items-center shadow-[0_-2px_10px_-4px_rgba(0,0,0,0.05)] border-t border-slate-200 relative">
-                {is24hExpired && (
-                  <div className="absolute top-0 left-0 right-0 -translate-y-full bg-amber-100 border-y border-amber-300 px-6 py-2.5 flex items-center justify-center shadow-md z-30">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
-                    <span className="text-[12px] font-bold text-amber-800">Sesión expirada (+24hs). DEBES iniciar con una Plantilla oficial (usa "/")</span>
-                  </div>
-                )}
-                
-                <div className="relative">
-                  <button 
-                    type="button"
-                    onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                    className="w-12 h-12 flex-shrink-0 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-full flex items-center justify-center transition-all bg-slate-50 border border-slate-200 shadow-sm"
-                    title="Adjuntar / Plantillas"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-
-                  {/* Menú de Adjuntos */}
-                  {showAttachmentMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 w-[220px] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
-                      <div className="p-1.5 flex flex-col gap-1">
-                        <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><ImageIcon className="w-4 h-4" /></div>
-                          <div className="text-left"><p className="text-[13px] font-bold">Fotos y Videos</p></div>
-                        </button>
-                        <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600"><FileText className="w-4 h-4" /></div>
-                          <div className="text-left"><p className="text-[13px] font-bold">Documento</p></div>
-                        </button>
-                        <button onClick={() => { alert("Nota de voz en desarrollo..."); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
-                          <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600"><Mic className="w-4 h-4" /></div>
-                          <div className="text-left"><p className="text-[13px] font-bold">Audio</p></div>
-                        </button>
-                        <div className="h-[1px] bg-slate-100 my-1"></div>
-                        <button onClick={() => { setShowWaPicker(true); setShowAttachmentMenu(false); if (!waTemplates.length) { fetchWaTemplates(); } }} className="flex items-center gap-3 w-full p-2.5 hover:bg-green-50 rounded-lg text-slate-700 transition-colors group">
-                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform"><MessageSquarePlus className="w-4 h-4" /></div>
-                          <div className="text-left">
-                            <p className="text-[13px] font-bold text-green-800">Plantilla de Meta</p>
-                            <p className="text-[10px] text-green-600">(Con Costo)</p>
-                          </div>
-                        </button>
-                      </div>
+                <div className="bg-slate-50/50 p-4 shrink-0 flex flex-col items-center border-t border-slate-200 relative">
+                  {is24hExpired && (
+                    <div className="w-full bg-amber-100 border border-amber-300 rounded-xl px-4 py-2 mb-3 flex items-center justify-center shadow-sm">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
+                      <span className="text-[12px] font-bold text-amber-800">Sesión expirada (+24hs). DEBES iniciar con una Plantilla (usa "/")</span>
                     </div>
                   )}
 
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*,.pdf,.doc,.docx" onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if(f) {
-                      showSystemModal("Adjunto no soportado", "El envío de multimedia desde el CRM requiere configurar el bucket del proveedor en el próximo módulo.", "info");
-                    }
-                  }} />
-                </div>
-
-                {showWaPicker && (
-                  <div className="absolute bottom-full left-4 w-[400px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
-                    <div className="bg-green-50 p-2.5 border-b border-green-100 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-green-700 uppercase tracking-wider">Plantillas Meta (Con Costo)</span>
-                      <button onClick={() => setShowWaPicker(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+                  <div className="w-full max-w-4xl bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-visible relative">
+                    
+                    {/* Simulated Tabs */}
+                    <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-slate-50">
+                      <button className="text-[12px] font-bold bg-slate-800 text-white px-3.5 py-1.5 rounded-full shadow-sm">Responder</button>
+                      <button className="text-[12px] font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-3.5 py-1.5 rounded-full transition-colors flex items-center"><MessageSquare className="w-3 h-3 mr-1"/> Nota privada</button>
                     </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {waTemplatesLoading ? (
-                        <div className="p-4 text-center text-sm text-slate-400 font-medium animate-pulse">Cargando Meta API...</div>
-                      ) : waTemplates.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-slate-400 font-medium">No hay plantillas oficiales disponibles.</div>
-                      ) : (
-                        waTemplates.map((t, idx) => {
-                          const body = t.components?.find((c: any) => c.type === 'BODY')?.text || 'Plantilla sin texto';
-                          return (
-                            <div key={idx} className="p-3 hover:bg-green-50/50 border-b border-slate-50 cursor-pointer transition-colors" onClick={() => applyOfficialTemplate(t)}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[13px] font-bold text-slate-700">{t.name}</span>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono uppercase">{t.language || 'es'}</span>
-                              </div>
-                              <p className="text-[12px] text-slate-500 truncate">{body}</p>
+
+                    {/* Input Area */}
+                    <div className="flex items-end p-2 relative">
+                      <div className="relative z-10 flex-shrink-0">
+                        <button 
+                          type="button"
+                          onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                          className="w-10 h-10 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full flex items-center justify-center transition-all"
+                          title="Adjuntar / Plantillas"
+                        >
+                          <Paperclip className="w-5 h-5" />
+                        </button>
+                        {/* Menú de Adjuntos */}
+                        {showAttachmentMenu && (
+                          <div className="absolute bottom-full left-0 mb-2 w-[220px] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
+                            <div className="p-1.5 flex flex-col gap-1">
+                              <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><ImageIcon className="w-4 h-4" /></div>
+                                <div className="text-left"><p className="text-[13px] font-bold">Fotos y Videos</p></div>
+                              </button>
+                              <button onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-slate-50 rounded-lg text-slate-700 transition-colors">
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600"><FileText className="w-4 h-4" /></div>
+                                <div className="text-left"><p className="text-[13px] font-bold">Documento</p></div>
+                              </button>
+                              <div className="h-[1px] bg-slate-100 my-1"></div>
+                              <button onClick={() => { setShowWaPicker(true); setShowAttachmentMenu(false); if (!waTemplates.length) { fetchWaTemplates(); } }} className="flex items-center gap-3 w-full p-2.5 hover:bg-green-50 rounded-lg text-slate-700 transition-colors group">
+                                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform"><MessageSquarePlus className="w-4 h-4" /></div>
+                                <div className="text-left">
+                                  <p className="text-[13px] font-bold text-green-800">Plantilla de Meta</p>
+                                </div>
+                              </button>
                             </div>
-                          );
-                        })
+                          </div>
+                        )}
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*,.pdf,.doc,.docx" onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if(f) {
+                            showSystemModal("Adjunto no soportado", "El envío de multimedia desde el CRM requiere configurar el bucket del proveedor en el próximo módulo.", "info");
+                          }
+                        }} />
+                      </div>
+
+                      {showWaPicker && (
+                        <div className="absolute bottom-full left-4 w-[400px] mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in">
+                          <div className="bg-green-50 p-2.5 border-b border-green-100 flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-green-700 uppercase tracking-wider">Plantillas Meta (Con Costo)</span>
+                            <button onClick={() => setShowWaPicker(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+                          </div>
+                          <div className="max-h-60 overflow-y-auto">
+                            {waTemplatesLoading ? (
+                              <div className="p-4 text-center text-sm text-slate-400 font-medium animate-pulse">Cargando Meta API...</div>
+                            ) : waTemplates.length === 0 ? (
+                              <div className="p-4 text-center text-sm text-slate-400 font-medium">No hay plantillas oficiales disponibles.</div>
+                            ) : (
+                              waTemplates.map((t, idx) => {
+                                const body = t.components?.find((c: any) => c.type === 'BODY')?.text || 'Plantilla sin texto';
+                                return (
+                                  <div key={idx} className="p-3 hover:bg-green-50/50 border-b border-slate-50 cursor-pointer transition-colors" onClick={() => applyOfficialTemplate(t)}>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[13px] font-bold text-slate-700">{t.name}</span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono uppercase">{t.language || 'es'}</span>
+                                    </div>
+                                    <p className="text-[12px] text-slate-500 truncate">{body}</p>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
                       )}
+
+                      <form onSubmit={handleSendMessage} className="flex-1 mx-1">
+                        <input 
+                          type="text" 
+                          value={newMessage}
+                          onChange={(e) => {
+                            if (is24hExpired && !e.target.value.startsWith('/') && e.target.value.length > 0) {
+                              showSystemModal("Sesión Expirada", "Solo puedes utilizar Plantillas '/' para retomar el diálogo.", "error");
+                              setNewMessage(e.target.value.startsWith('/') ? e.target.value : "/");
+                              return;
+                            }
+                            handleInputChange(e);
+                          }}
+                          placeholder={is24hExpired ? "Escribe '/' para elegir plantilla..." : "Shift + enter para nueva línea. Comience con '/' para seleccionar respuesta..."} 
+                          className={`w-full bg-transparent px-3 py-2.5 text-[14px] focus:outline-none transition-all placeholder:text-slate-400
+                            ${is24hExpired ? 'text-amber-900' : 'text-slate-800'}`}
+                        />
+                      </form>
+
+                      <button 
+                        onClick={handleSendMessage}
+                        disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/'))}
+                        className={`w-10 h-10 flex-shrink-0 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all ml-1
+                          ${is24hExpired ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700 shadow-[0_2px_10px_rgba(37,99,235,0.3)]'}
+                        `}
+                      >
+                        <div style={{transform: "rotate(45deg) translate(-1px, 1px)"}}><Upload className="w-4 h-4" /></div>
+                      </button>
                     </div>
                   </div>
-                )}
-                
-                <form onSubmit={handleSendMessage} className="flex-1 mx-2">
-                  <input 
-                    type="text" 
-                    value={newMessage}
-                    onChange={(e) => {
-                      if (is24hExpired && !e.target.value.startsWith('/') && e.target.value.length > 0) {
-                        showSystemModal("Sesión Expirada", "Solo puedes utilizar Plantillas '/' para retomar el diálogo.", "error");
-                        // force empty or just keep '/'
-                        setNewMessage(e.target.value.startsWith('/') ? e.target.value : "/");
-                        return;
-                      }
-                      handleInputChange(e);
-                    }}
-                    placeholder={is24hExpired ? "Escribe '/' para elegir plantilla..." : "Escribe '/' para plantillas o simplemente un mensaje..."} 
-                    className={`w-full border rounded-full px-5 py-3 text-[14px] focus:outline-none transition-all shadow-inner 
-                      ${is24hExpired 
-                        ? 'bg-amber-50 border-amber-300 text-amber-900 focus:bg-amber-100 focus:border-amber-500 placeholder:text-amber-500/70' 
-                        : 'bg-slate-100 border-transparent text-slate-800 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10'}`}
-                  />
-                </form>
-
-                <button 
-                  onClick={handleSendMessage}
-                  disabled={!newMessage.trim() || (is24hExpired && !newMessage.startsWith('/'))}
-                  className={`w-12 h-12 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-full flex items-center justify-center transition-all shadow-md ml-2
-                    ${is24hExpired ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-500 hover:bg-green-600'}
-                  `}
-                >
-                  <div style={{transform: "rotate(45deg) translate(-2px, 2px)"}}><Upload className="w-5 h-5" /></div>
-                </button>
-              </div>
+                </div>
             </div>
           </>
         ) : (
